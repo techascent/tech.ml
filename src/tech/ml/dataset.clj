@@ -11,13 +11,14 @@
   Care has been taken to keep certain operations lazy so that datasets of unbounded
   length can be manipulated."
   (:require [tech.datatype :as dtype]
-            [tech.parallel :as parallel]))
+            [tech.parallel :as parallel])
+  (:import [java.util Iterator NoSuchElementException]))
 
 
 (set! *warn-on-reflection* true)
 
 
-(defn- get-dataset-item
+(defn get-dataset-item
   [dataset-entry item-key]
   (if-let [retval (get dataset-entry item-key)]
     retval
@@ -220,6 +221,24 @@ options are:
                                                        first)]
                                      (dtype/unchecked-cast label-val datatype)
                                      (dtype/cast label-val datatype))))}))))))))
+
+
+(defn sequence->iterator
+  "Java ml interfaces sometimes use iterators where they really should
+  use sequences (iterators have state).  In any case, we do what we can."
+  ^Iterator [item-seq]
+  (let [next-item-fn (parallel/create-next-item-fn item-seq)
+        next-item-atom (atom (next-item-fn))]
+    (proxy [Iterator] []
+      (hasNext []
+        (boolean @next-item-atom))
+      (next []
+        (locking this
+          (if-let [entry @next-item-atom]
+            (do
+              (reset! next-item-atom (next-item-fn))
+              entry)
+            (throw (NoSuchElementException.))))))))
 
 
 (defn dataset->k-fold-datasets

@@ -1,4 +1,5 @@
-(ns tech.ml.train)
+(ns tech.ml.train
+  (:require [tech.ml.dataset :as dataset]))
 
 
 (defn dataset-seq->dataset-model-seq
@@ -21,7 +22,7 @@
        (map (fn [{:keys [test-ds model]}]
               (let [predictions (predict-fn model test-ds)
                     labels (->> test-ds
-                                (map #(get-dataset-item % label-key)))]
+                                (map #(dataset/get-dataset-item % label-key)))]
                 (loss-fn predictions labels))))
        (apply +)
        (* (/ 1.0 (count dataset-seq)))))
