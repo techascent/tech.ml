@@ -11,7 +11,10 @@
   Care has been taken to keep certain operations lazy so that datasets of unbounded
   length can be manipulated."
   (:require [tech.datatype :as dtype]
-            [tech.parallel :as parallel])
+            [tech.parallel :as parallel]
+            [tech.compute.cpu.tensor-math :as cpu-tm]
+            [tech.compute.tensor :as ct]
+            [tech.compute.tensor.operations :as ops])
   (:import [java.util Iterator NoSuchElementException]))
 
 
@@ -88,7 +91,8 @@
         n-features (count feature-keys)
         all-keys (concat feature-keys label-keys)
         expected-ecount-map (->> (dataset-entry->data all-keys (first dataset))
-                                 (ecount-map all-keys))]
+                                 (ecount-map all-keys))
+        batch-size (or batch-size 1)]
     ;;We have to remember the ecounts at a high level because once they are
     ;;interleaved we get potentially ragged dimensions and there is no efficient
     ;;way to handle that.
@@ -126,7 +130,7 @@
                  (assoc :extra-data leftover))))))}))
 
 
-(defn dataset->values-label-sequence
+(defn coalesce-dataset
   "Take a dataset and produce a sequence of values,label maps
   where the entries are coalesced items of the dataset.
   Ecounts are always checked.
@@ -255,3 +259,94 @@ options are:
     (for [i (range k)]
       {:test-ds (nth folds i)
        :train-ds (apply concat (keep-indexed #(if (not= %1 i) %2) folds))})))
+
+
+(defn- update-min-max
+  [old-val new-val]
+  (let [new-val-tens (cpu-tm/as-tensor new-val)]
+    ;;Ensure we have jvm-representable values (not pointers to c objects)
+    (if-not old-val
+      (let [min-container (-> (cpu-tm/buffer->tensor (dtype/make-typed-buffer
+                                                      (dtype/get-datatype new-val)
+                                                      (dtype/ecount new-val)))
+                              (ct/assign! new-val-tens))
+            max-container (-> (cpu-tm/buffer->tensor (dtype/make-typed-buffer
+                                                      (dtype/get-datatype new-val)
+                                                      (dtype/ecount new-val)))
+                              (ct/assign! new-val-tens))]
+        [min-container max-container])
+      (let [[min-container max-container] old-val]
+        [(ops/min min-container new-val-tens)
+         (ops/max max-container new-val-tens)]))))
+
+
+(defn- ->array-storage
+  [tensor]
+  (-> tensor
+      ct/tensor->buffer
+      (update :buffer
+              #(if-let [retval (dtype/->array %)]
+                 retval
+                 (throw (ex-info "Array storage failure"
+                                 {:buffer-type (type %)}))))))
+
+
+(defn per-parameter-dataset-min-max
+  "Create a new (coalesced) dataset with parameters scaled.
+If label range is not provided then labels are left unscaled."
+  [feature-keys label-keys options
+   dataset]
+  (let [feature-keys (normalize-keys feature-keys)
+        label-keys (normalize-keys label-keys)
+        ;;Flatten the dataset into something reasonable
+        dataset (dataset->values-label-sequence feature-keys label-keys
+                                                (assoc options
+                                                       :scalar-label? false
+                                                       :container-fn dtype/make-typed-buffer
+                                                       :batch-size nil)
+                                                dataset)]
+    {:coalesced-dataset dataset
+     :min-max-map
+     (->> (reduce (fn [min-max-map {:keys [values label]}]
+                    (cond-> min-max-map
+                      feature-keys (update :values update-min-max values)
+                      label-keys (update :label update-min-max label)))
+                  {}
+                  dataset)
+          ;;Make this thing serializeable with simple java serialization
+          (map (fn [[k [min-v max-v]]]
+                 [k [(->array-storage min-v)
+                     (->array-storage max-v)]]))
+          (into {}))}))
+
+
+(defn min-max-map->scale-map
+  [min-max-map range-map]
+  (->> min-max-map
+       (map (fn [[k [min-v max-v]]]
+              (if-let [range-data (get range-map k)]
+                (let [[min-val max-val] range-data
+                      val-range (- (double max-val)
+                                   (double min-val))
+                      min-v-tens (cpu-tm/buffer->tensor min-v)
+                      max-v-tens (cpu-tm/buffer->tensor max-v)
+
+                      range-data (-> (dtype/make-typed-buffer (dtype/get-datatype min-v)
+                                                              (dtype/ecount min-v))
+                                     (cpu-tm/buffer->tensor)
+                                     (ct/assign! max-v)
+                                     (ops/- min-v))
+
+                      ]
+
+
+                  )
+                )
+              ))))
+
+
+(defn per-parameter-scale-coalesced-dataset!
+  "in-place scale a coalesced dataset."
+  [scale-map dataset]
+  (->> dataset
+       (map (fn [{:keys [values label]}]))))
