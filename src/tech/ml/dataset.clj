@@ -157,7 +157,6 @@ options are:
    :labels - container or scalar}"
   [feature-keys label-keys {:keys [datatype
                                    unchecked?
-                                   scalar-label?
                                    container-fn
                                    queue-depth
                                    batch-size
@@ -165,12 +164,13 @@ options are:
                                    ]
                             :or {datatype :float64
                                  unchecked? true
-                                 scalar-label? false
                                  container-fn dtype/make-array-of-type
                                  queue-depth 0
                                  batch-size 1}
                             :as options}
    dataset]
+  ;;Quick out of this dataset has already been coalesced
+  dataset
   (let [[dataset feature-keys label-keys
          value-ecount label-ecount
          expected-ecount-map]
@@ -187,10 +187,6 @@ options are:
                                     {:unchecked? unchecked?})
         value-ecount (long value-ecount)
         label-ecount (long label-ecount)]
-    (when (and scalar-label?
-               (> label-ecount 1))
-      (throw (ex-info "Scalar label indicated but label ecount > 1"
-                      {:label-ecount label-ecount})))
     (->> dataset
          (parallel/queued-pmap
           queue-depth
@@ -201,10 +197,8 @@ options are:
                   feature-container (container-fn datatype value-ecount
                                                   container-fn-options)
                   label-container (when label-keys
-                                    (if scalar-label?
-                                      nil
-                                      (container-fn datatype label-ecount
-                                                    container-fn-options)))]
+                                    (container-fn datatype label-ecount
+                                                  container-fn-options))]
               ;;Remove all used keys.  This saves potentially huge amounts of
               ;;memory.  That being said, there may be information on the dataset
               ;;entry that is useful to recreate sample so we are conservatively
@@ -276,24 +270,13 @@ options are:
 (defn per-parameter-dataset-min-max
   "Create a new (coalesced) dataset with parameters scaled.
 If label range is not provided then labels are left unscaled."
-  [feature-keys label-keys options
-   dataset]
-  (let [feature-keys (normalize-keys feature-keys)
-        label-keys (normalize-keys label-keys)
-        ;;Flatten the dataset into something reasonable
-        dataset (coalesce-dataset feature-keys label-keys
-                                  (assoc options
-                                         :scalar-label? false
-                                         :batch-size nil)
-                                  dataset)]
-    {:coalesced-dataset dataset
-     :min-max-map
-     (reduce (fn [min-max-map {:keys [values label]}]
-               (cond-> min-max-map
-                 feature-keys (update :values update-min-max values)
-                 label-keys (update :label update-min-max label)))
-             {}
-             dataset)}))
+  [coalesced-dataset]
+  (reduce (fn [min-max-map {:keys [values label]}]
+            (cond-> min-max-map
+              values (update :values update-min-max values)
+              label (update :label update-min-max label)))
+          {}
+          coalesced-dataset))
 
 
 (defn min-max-map->scale-map
@@ -314,10 +297,10 @@ If label range is not provided then labels are left unscaled."
        (into {})))
 
 
-(defn per-parameter-scale-coalesced-dataset
-  "scale a coalesced dataset producing a new dataset"
-  [scale-map dataset]
-  (->> dataset
+(defn per-parameter-scale-coalesced-dataset!
+  "scale a coalesced dataset in place"
+  [scale-map coalesced-dataset]
+  (->> coalesced-dataset
        (map
         (fn [ds-entry]
           (merge ds-entry
@@ -330,3 +313,25 @@ If label range is not provided then labels are left unscaled."
                                       (ops/+ (:per-elem-bias scale-entry)))])))
                       (remove nil?)
                       (into {})))))))
+
+
+(defn apply-dataset-options
+  [feature-keys label-keys options dataset]
+  (let [coalesced-dataset (coalesce-dataset feature-keys label-keys
+                                            options dataset)]
+    (cond
+      (:range-map options)
+      (let [min-max-map (per-parameter-dataset-min-max coalesced-dataset)
+            scale-map (min-max-map->scale-map min-max-map (:range-map options))]
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset!
+                             scale-map coalesced-dataset)
+         :options (-> (dissoc options :range-map)
+                      (assoc :scale-map scale-map))})
+      (:scale-map options)
+      (let [scale-map (:scale-map options)]
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset!
+                             scale-map coalesced-dataset)
+         :options options})
+      :else
+      {:coalesced-dataset coalesced-dataset
+       :options options})))

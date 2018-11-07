@@ -71,11 +71,6 @@
         (is (= correct-no-label
                (->> (dataset/coalesce-dataset
                      [:a :b] nil {:keep-extra? false} test-ds)
-                    vectorize-result)))
-        (is (= correct-scalar-label
-               (->> (dataset/coalesce-dataset
-                     [:a :b] :c {:keep-extra? false
-                                  :scalar-label? true} test-ds)
                     vectorize-result)))))
     (testing "batch coalescing"
       (let [correct [{:values [0 1 2 4 5 6], :label [3 7]}
