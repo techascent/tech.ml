@@ -7,7 +7,9 @@
 
 
 (defn basic-regression
-  [system-name]
+  [system-name & {:keys [model-type accuracy]
+                  :or {model-type :regression
+                       accuracy 0.01}}]
   (let [f (partial * 2)
         observe (fn []
                   (let [x (- (* 20 (rand)) 10)
@@ -17,10 +19,10 @@
                            (take 1000))
         test-dataset (for [x (range -9.9 10 0.1)] {:x x})
         test-labels (map (comp f :x) test-dataset)
-        model (ml/train system-name [:x] :y {:model-type :regression} train-dataset)
+        model (ml/train system-name [:x] :y {:model-type (or model-type :regression)} train-dataset)
         test-output (ml/predict model test-dataset)
         mse (loss/mse test-output test-labels)]
-    (is (< mse 0.01))))
+    (is (< mse (double accuracy)))))
 
 
 (defn scaled-features
