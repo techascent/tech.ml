@@ -9,7 +9,7 @@
   [system-name feature-keys label-keys options dataset]
   (let [ml-system (registry/system system-name)
         options (merge options (protocols/coalesce-options ml-system))
-        {:keys [coalesced-dataset scale-map options]}
+        {:keys [coalesced-dataset options]}
         (dataset/apply-dataset-options feature-keys label-keys options dataset)
         model (protocols/train ml-system options coalesced-dataset)]
     (merge {:system system-name
