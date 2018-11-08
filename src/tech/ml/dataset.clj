@@ -11,7 +11,10 @@
   Care has been taken to keep certain operations lazy so that datasets of unbounded
   length can be manipulated."
   (:require [tech.datatype :as dtype]
-            [tech.parallel :as parallel])
+            [tech.parallel :as parallel]
+            [tech.compute.cpu.tensor-math :as cpu-tm]
+            [tech.compute.tensor :as ct]
+            [tech.compute.tensor.operations :as ops])
   (:import [java.util Iterator NoSuchElementException]))
 
 
@@ -88,7 +91,8 @@
         n-features (count feature-keys)
         all-keys (concat feature-keys label-keys)
         expected-ecount-map (->> (dataset-entry->data all-keys (first dataset))
-                                 (ecount-map all-keys))]
+                                 (ecount-map all-keys))
+        batch-size (or batch-size 1)]
     ;;We have to remember the ecounts at a high level because once they are
     ;;interleaved we get potentially ragged dimensions and there is no efficient
     ;;way to handle that.
@@ -126,7 +130,7 @@
                  (assoc :extra-data leftover))))))}))
 
 
-(defn dataset->values-label-sequence
+(defn coalesce-dataset
   "Take a dataset and produce a sequence of values,label maps
   where the entries are coalesced items of the dataset.
   Ecounts are always checked.
@@ -153,7 +157,6 @@ options are:
    :labels - container or scalar}"
   [feature-keys label-keys {:keys [datatype
                                    unchecked?
-                                   scalar-label?
                                    container-fn
                                    queue-depth
                                    batch-size
@@ -161,12 +164,13 @@ options are:
                                    ]
                             :or {datatype :float64
                                  unchecked? true
-                                 scalar-label? false
                                  container-fn dtype/make-array-of-type
                                  queue-depth 0
                                  batch-size 1}
                             :as options}
    dataset]
+  ;;Quick out of this dataset has already been coalesced
+  dataset
   (let [[dataset feature-keys label-keys
          value-ecount label-ecount
          expected-ecount-map]
@@ -183,10 +187,6 @@ options are:
                                     {:unchecked? unchecked?})
         value-ecount (long value-ecount)
         label-ecount (long label-ecount)]
-    (when (and scalar-label?
-               (> label-ecount 1))
-      (throw (ex-info "Scalar label indicated but label ecount > 1"
-                      {:label-ecount label-ecount})))
     (->> dataset
          (parallel/queued-pmap
           queue-depth
@@ -197,10 +197,8 @@ options are:
                   feature-container (container-fn datatype value-ecount
                                                   container-fn-options)
                   label-container (when label-keys
-                                    (if scalar-label?
-                                      nil
-                                      (container-fn datatype label-ecount
-                                                    container-fn-options)))]
+                                    (container-fn datatype label-ecount
+                                                  container-fn-options))]
               ;;Remove all used keys.  This saves potentially huge amounts of
               ;;memory.  That being said, there may be information on the dataset
               ;;entry that is useful to recreate sample so we are conservatively
@@ -255,3 +253,85 @@ options are:
     (for [i (range k)]
       {:test-ds (nth folds i)
        :train-ds (apply concat (keep-indexed #(if (not= %1 i) %2) folds))})))
+
+
+(defn- update-min-max
+  [old-val new-val]
+  ;;Ensure we have jvm-representable values (not pointers to c objects)
+  (if-not old-val
+    (let [min-container (ct/clone new-val)
+          max-container (ct/clone new-val)]
+      [min-container max-container])
+    (let [[min-container max-container] old-val]
+      [(ops/min min-container new-val)
+       (ops/max max-container new-val)])))
+
+
+(defn per-parameter-dataset-min-max
+  "Create a new (coalesced) dataset with parameters scaled.
+If label range is not provided then labels are left unscaled."
+  [coalesced-dataset]
+  (reduce (fn [min-max-map {:keys [values label]}]
+            (cond-> min-max-map
+              values (update :values update-min-max values)
+              label (update :label update-min-max label)))
+          {}
+          coalesced-dataset))
+
+
+(defn min-max-map->scale-map
+  [min-max-map range-map]
+  (->> min-max-map
+       (map (fn [[k [min-v max-v]]]
+              (if-let [range-data (get range-map k)]
+                [k
+                 (let [[min-val max-val] range-data
+                       val-range (- (double max-val)
+                                    (double min-val))
+                       range-data (-> (ct/clone max-v)
+                                      (ops/- min-v)
+                                      (ops// val-range))]
+                   {:per-elem-subtract min-v
+                    :per-elem-div range-data
+                    :per-elem-bias min-val})])))
+       (into {})))
+
+
+(defn per-parameter-scale-coalesced-dataset!
+  "scale a coalesced dataset in place"
+  [scale-map coalesced-dataset]
+  (->> coalesced-dataset
+       (map
+        (fn [ds-entry]
+          (merge ds-entry
+                 (->> scale-map
+                      (map (fn [[k scale-entry]]
+                             (when-let [v (get ds-entry k)]
+                               [k (-> (ct/clone v)
+                                      (ops/- (:per-elem-subtract scale-entry))
+                                      (ops// (:per-elem-div scale-entry))
+                                      (ops/+ (:per-elem-bias scale-entry)))])))
+                      (remove nil?)
+                      (into {})))))))
+
+
+(defn apply-dataset-options
+  [feature-keys label-keys options dataset]
+  (let [coalesced-dataset (coalesce-dataset feature-keys label-keys
+                                            options dataset)]
+    (cond
+      (:range-map options)
+      (let [min-max-map (per-parameter-dataset-min-max coalesced-dataset)
+            scale-map (min-max-map->scale-map min-max-map (:range-map options))]
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset!
+                             scale-map coalesced-dataset)
+         :options (-> (dissoc options :range-map)
+                      (assoc :scale-map scale-map))})
+      (:scale-map options)
+      (let [scale-map (:scale-map options)]
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset!
+                             scale-map coalesced-dataset)
+         :options options})
+      :else
+      {:coalesced-dataset coalesced-dataset
+       :options options})))

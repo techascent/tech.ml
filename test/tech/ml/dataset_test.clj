@@ -61,21 +61,16 @@
                               {:values [32 33 34]}
                               {:values [36 37 38]}]]
         (is (= correct
-               (->> (dataset/dataset->values-label-sequence
+               (->> (dataset/coalesce-dataset
                      [:a :b] :c {} test-ds)
                     vectorize-result)))
         (is (= correct
-               (->> (dataset/dataset->values-label-sequence
+               (->> (dataset/coalesce-dataset
                      [:a :b] :c {:batch-size 1} test-ds)
                     vectorize-result)))
         (is (= correct-no-label
-               (->> (dataset/dataset->values-label-sequence
+               (->> (dataset/coalesce-dataset
                      [:a :b] nil {:keep-extra? false} test-ds)
-                    vectorize-result)))
-        (is (= correct-scalar-label
-               (->> (dataset/dataset->values-label-sequence
-                     [:a :b] :c {:keep-extra? false
-                                  :scalar-label? true} test-ds)
                     vectorize-result)))))
     (testing "batch coalescing"
       (let [correct [{:values [0 1 2 4 5 6], :label [3 7]}
@@ -84,6 +79,6 @@
                      {:values [24 25 26 28 29 30], :label [27 31]}
                      {:values [32 33 34 36 37 38], :label [35 39]}]]
           (is (= correct
-                 (->> (dataset/dataset->values-label-sequence
+                 (->> (dataset/coalesce-dataset
                        [:a :b] :c {:batch-size 2} test-ds)
                       vectorize-result)))))))
