@@ -70,12 +70,14 @@ loss-fn: (loss-fn label-sequence prediction-sequence)-> double
           {:options options
            :error (average-prediction-error
                    (partial train-fn options)
-                   (partial predict-fn options)
+                   predict-fn
                    label-key
                    loss-fn
-                   dataset-seq) }))
+                   dataset-seq)}))
        (reduce (fn [best-map {:keys [options error] :as next-map}]
                  (if (or (not best-map)
                          (< (double error)
                             (double (:error best-map))))
-                   {})))))
+                   next-map
+                   best-map))
+               nil)))
