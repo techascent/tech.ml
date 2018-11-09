@@ -22,9 +22,16 @@
 
 
 (defn get-dataset-item
-  [dataset-entry item-key]
+  [dataset-entry item-key {:keys [label-map]}]
   (if-let [retval (get dataset-entry item-key)]
-    retval
+    (if-let [retval-labels (get label-map item-key)]
+      (if-let [labelled-retval (get retval-labels retval)]
+        labelled-retval
+        (throw (ex-info "Failed to find label for item"
+                        {:item-key item-key
+                         :ds-entry retval
+                         :label-map label-map})))
+      retval)
     (throw (ex-info "Failed to get dataset item"
                     {:item-key item-key
                      :dataset-entry-keys (keys dataset-entry)}))))
@@ -37,9 +44,9 @@
 
 
 (defn- dataset-entry->data
-  [entry-keys dataset-entry]
+  [entry-keys dataset-entry options]
   (->> entry-keys
-       (map #(get-dataset-item dataset-entry %))))
+       (map #(get-dataset-item dataset-entry % options))))
 
 
 (defn- normalize-keys
@@ -52,8 +59,8 @@
 
 
 (defn- check-entry-ecounts
-  [expected-ecount-map all-keys ds-entry]
-  (let [entry-values (dataset-entry->data all-keys ds-entry)
+  [expected-ecount-map all-keys ds-entry options]
+  (let [entry-values (dataset-entry->data all-keys ds-entry options)
         ds-entry-ecounts (ecount-map all-keys entry-values)]
     (when-not (= expected-ecount-map
                  ds-entry-ecounts)
@@ -83,14 +90,15 @@
 
   Returns
   {:values :label :extra-data}"
-  [feature-keys label-keys batch-size {:keys [keep-extra?]
-                                       :or {keep-extra? true}}
+  [feature-keys label-keys batch-size {:keys [keep-extra? label-map]
+                                       :or {keep-extra? true}
+                                       :as options}
    dataset]
   (let [feature-keys (normalize-keys feature-keys)
         label-keys (normalize-keys label-keys)
         n-features (count feature-keys)
         all-keys (concat feature-keys label-keys)
-        expected-ecount-map (->> (dataset-entry->data all-keys (first dataset))
+        expected-ecount-map (->> (dataset-entry->data all-keys (first dataset) options)
                                  (ecount-map all-keys))
         batch-size (or batch-size 1)]
     ;;We have to remember the ecounts at a high level because once they are
@@ -115,7 +123,8 @@
                          (fn [ds-entry]
                            (let [entry-values (check-entry-ecounts expected-ecount-map
                                                                    all-keys
-                                                                   ds-entry)
+                                                                   ds-entry
+                                                                   options)
                                  leftover (apply dissoc ds-entry all-keys)]
                              (cond-> {:values (take n-features entry-values)
                                       :label (drop n-features entry-values)}
@@ -191,7 +200,10 @@ options are:
          (parallel/queued-pmap
           queue-depth
           (fn [dataset-entry]
-            (let [entry-data (dataset-entry->data all-keys dataset-entry)
+            ;;Batching takes care of label->integer(s) conversion so we do not do it
+            ;;again
+            (let [entry-data (dataset-entry->data all-keys dataset-entry
+                                                  (dissoc options :label-map))
                   feature-data (take n-features entry-data)
                   label-data (seq (drop n-features entry-data))
                   feature-container (container-fn datatype value-ecount
@@ -317,7 +329,43 @@ If label range is not provided then labels are left unscaled."
 
 (defn apply-dataset-options
   [feature-keys label-keys options dataset]
-  (let [coalesced-dataset (coalesce-dataset feature-keys label-keys
+  (let [first-item (first dataset)
+        categorical-labels (->> (concat (normalize-keys feature-keys)
+                                        (normalize-keys label-keys))
+                                (map #(when (not (number? (get first-item %)))
+                                        %))
+                                (remove nil?)
+                                seq)
+        label-map (get options :label-map)
+        label-map
+        ;;scan dataset for labels.
+        (if (and categorical-labels
+                 (not label-map))
+          (let [label-atom (atom {})
+                map-fn (if (:deterministic-label-map? options)
+                         map
+                         pmap)]
+            (->> dataset
+                 (map-fn
+                  (fn [ds-entry]
+                    (->> categorical-labels
+                         (map (fn [cat-label]
+                                (let [ds-value (get ds-entry cat-label)]
+                                  (swap! label-atom update cat-label
+                                         (fn [existing]
+                                           (if-let [idx (get existing ds-value)]
+                                             existing
+                                             (assoc existing ds-value
+                                                    ;;Usually labels start at 1.
+                                                    (inc (count existing)))))))))
+                         dorun)
+                    ds-entry))
+                 dorun)
+            @label-atom))
+        options (merge options
+                       (when label-map
+                         {:label-map label-map}))
+        coalesced-dataset (coalesce-dataset feature-keys label-keys
                                             options dataset)]
     (cond
       (:range-map options)

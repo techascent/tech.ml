@@ -1,6 +1,7 @@
 (ns tech.ml.dataset-test
   (:require [clojure.test :refer :all]
-            [tech.ml.dataset :as dataset]))
+            [tech.ml.dataset :as dataset]
+            [tech.verify.ml.classification :as vf-classify]))
 
 
 (defn- vectorize-result
@@ -82,3 +83,66 @@
                  (->> (dataset/coalesce-dataset
                        [:a :b] :c {:batch-size 2} test-ds)
                       vectorize-result)))))))
+
+
+(deftest test-categorical-data
+  (let [test-ds (vf-classify/fruit-dataset)
+        {:keys [coalesced-dataset options]}
+        (dataset/apply-dataset-options [:color-score :height :mass :width] :fruit-name
+                                       {:deterministic-label-map? true}
+                                       test-ds)]
+    (is (= options {:label-map {:fruit-name {:apple 1 :lemon 4
+                                             :mandarin 2 :orange 3}}
+                    :deterministic-label-map? true}))
+    (is (= [{:values [0 7 192 8], :label [1]}
+	   {:values [0 6 180 8], :label [1]}
+	   {:values [0 7 176 7], :label [1]}
+	   {:values [0 4 86 6], :label [2]}
+	   {:values [0 4 84 6], :label [2]}]
+           (->> coalesced-dataset
+                vectorize-result
+                (take 5)
+                vec)))
+    (let [{:keys [coalesced-dataset]}
+          (dataset/apply-dataset-options [:color-score :height :mass :width] :fruit-name
+                                         {:label-map {:fruit-name {:apple 4 :lemon 2
+                                                                   :mandarin 3 :orange 1}}}
+                                         test-ds)]
+      (is (= [{:values [0 7 192 8], :label [4]}
+              {:values [0 6 180 8], :label [4]}
+              {:values [0 7 176 7], :label [4]}
+              {:values [0 4 86 6], :label [3]}
+              {:values [0 4 84 6], :label [3]}]
+             (->> coalesced-dataset
+                  vectorize-result
+                  (take 5)
+                  vec))))
+    (let [{:keys [options coalesced-dataset]}
+          (dataset/apply-dataset-options [:color-score :height :mass :width :fruit-subtype]
+                                         :fruit-name
+                                         {:deterministic-label-map? true} test-ds)]
+      (is (= {:label-map
+              {:fruit-subtype
+               {:golden-delicious 4
+                :unknown 10
+                :granny-smith 1
+                :braeburn 3
+                :spanish-jumbo 6
+                :selected-seconds 7
+                :mandarin 2
+                :cripps-pink 5
+                :turkey-navel 8
+                :spanish-belsan 9}
+               :fruit-name {:apple 1 :mandarin 2
+                            :orange 3 :lemon 4}}
+              :deterministic-label-map? true}
+             options))
+      (is (= [{:values [0 7 192 8 1], :label [1]}
+              {:values [0 6 180 8 1], :label [1]}
+              {:values [0 7 176 7 1], :label [1]}
+              {:values [0 4 86 6 2], :label [2]}
+              {:values [0 4 84 6 2], :label [2]}]
+             (->> coalesced-dataset
+                  vectorize-result
+                  (take 5)
+                  vec))))))
