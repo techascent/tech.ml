@@ -78,5 +78,4 @@ loss-fn: (loss-fn label-sequence prediction-sequence)-> double
                  (if (or (not best-map)
                          (< (double error)
                             (double (:error best-map))))
-                   next-map
-                   best-map)))))
+                   {})))))
