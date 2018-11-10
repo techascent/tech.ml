@@ -57,7 +57,7 @@
                           {:model-type :regression})
         predict-fn ml/predict
         mse (->> train-dataset
-                 (dataset/dataset->k-fold-datasets 10 {})
+                 (dataset/->k-fold-datasets 10 {})
                  (train/average-prediction-error train-fn predict-fn
                                                  label loss/mse))]
     (is (< mse 0.01))))
@@ -71,7 +71,7 @@
         label :y
         train-fn (partial ml/train system-name feature-keys label)
         predict-fn ml/predict
-        k-fold-ds (dataset/dataset->k-fold-datasets 5 {} train-dataset)
+        k-fold-ds (dataset/->k-fold-datasets 5 {} train-dataset)
         option-seq [(merge {:model-type :regression} options)
                     (merge {:model-type :regression} options)]
         {:keys [error options]} (train/find-best-options train-fn predict-fn

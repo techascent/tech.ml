@@ -89,11 +89,13 @@
   (let [test-ds (vf-classify/fruit-dataset)
         {:keys [coalesced-dataset options]}
         (dataset/apply-dataset-options [:color-score :height :mass :width] :fruit-name
-                                       {:deterministic-label-map? true}
+                                       {:deterministic-label-map? true
+                                        :multiclass-label-base-index 1}
                                        test-ds)]
     (is (= options {:label-map {:fruit-name {:apple 1 :lemon 4
                                              :mandarin 2 :orange 3}}
-                    :deterministic-label-map? true}))
+                    :deterministic-label-map? true
+                    :multiclass-label-base-index 1}))
     (is (= [{:values [0 7 192 8], :label [1]}
 	   {:values [0 6 180 8], :label [1]}
 	   {:values [0 7 176 7], :label [1]}
@@ -120,7 +122,8 @@
     (let [{:keys [options coalesced-dataset]}
           (dataset/apply-dataset-options [:color-score :height :mass :width :fruit-subtype]
                                          :fruit-name
-                                         {:deterministic-label-map? true} test-ds)]
+                                         {:deterministic-label-map? true
+                                          :multiclass-label-base-index 1} test-ds)]
       (is (= {:label-map
               {:fruit-subtype
                {:golden-delicious 4
@@ -135,7 +138,8 @@
                 :spanish-belsan 9}
                :fruit-name {:apple 1 :mandarin 2
                             :orange 3 :lemon 4}}
-              :deterministic-label-map? true}
+              :deterministic-label-map? true
+              :multiclass-label-base-index 1}
              options))
       (is (= [{:values [0 7 192 8 1], :label [1]}
               {:values [0 6 180 8 1], :label [1]}

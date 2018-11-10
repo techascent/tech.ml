@@ -49,7 +49,7 @@
        (map #(get-dataset-item dataset-entry % options))))
 
 
-(defn- normalize-keys
+(defn normalize-keys
   [kwd-or-seq]
   (when kwd-or-seq
     (-> (if-not (sequential? kwd-or-seq)
@@ -251,7 +251,7 @@ options are:
             (throw (NoSuchElementException.))))))))
 
 
-(defn dataset->k-fold-datasets
+(defn ->k-fold-datasets
   "Given 1 dataset, prepary K datasets using the k-fold algorithm.
   Randomize dataset defaults to true which will realize the entire dataset
   so use with care if you have large datasets."
@@ -265,6 +265,19 @@ options are:
     (for [i (range k)]
       {:test-ds (nth folds i)
        :train-ds (apply concat (keep-indexed #(if (not= %1 i) %2) folds))})))
+
+
+(defn ->train-test-split
+  [{:keys [randomize-dataset? train-fraction]
+    :or {randomize-dataset? true
+         train-fraction 0.7}}
+   dataset]
+  (let [dataset (cond-> dataset
+                  randomize-dataset? shuffle)
+        n-elems (count dataset)
+        n-training (long (Math/round (* n-elems (double train-fraction))))]
+    {:train-ds (take n-training dataset)
+     :test-ds (drop n-training dataset)}))
 
 
 (defn- update-min-max
@@ -342,6 +355,8 @@ If label range is not provided then labels are left unscaled."
         (if (and categorical-labels
                  (not label-map))
           (let [label-atom (atom {})
+                label-base-idx (long (or (:multiclass-label-base-index options)
+                                         0))
                 map-fn (if (:deterministic-label-map? options)
                          map
                          pmap)]
@@ -356,8 +371,8 @@ If label range is not provided then labels are left unscaled."
                                            (if-let [idx (get existing ds-value)]
                                              existing
                                              (assoc existing ds-value
-                                                    ;;Usually labels start at 1.
-                                                    (inc (count existing)))))))))
+                                                    (+ label-base-idx
+                                                       (count existing)))))))))
                          dorun)
                     ds-entry))
                  dorun)

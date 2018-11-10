@@ -12,3 +12,20 @@
             (m/pow 2)
             (m/esum))
         n))))
+
+
+(defn classification-accuracy
+  "correct/total.
+Model output is a sequence of probability distributions.
+label-seq is a sequence of values.  The answer is considered correct
+if the key highest probability in the model output entry matches
+that label."
+  ^double [model-output label-seq]
+  (let [num-items (count model-output)
+        num-correct (->> model-output
+                         (map #(apply max-key % (keys %)))
+                         (map vector label-seq)
+                         (filter #(apply = %))
+                         count)]
+    (/ (double num-correct)
+       (double num-items))))
