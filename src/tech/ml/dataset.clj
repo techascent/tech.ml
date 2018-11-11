@@ -55,7 +55,7 @@
     (-> (if-not (sequential? kwd-or-seq)
           [kwd-or-seq]
           kwd-or-seq)
-        seq)))
+        vec)))
 
 
 (defn- check-entry-ecounts
@@ -343,9 +343,14 @@ If label range is not provided then labels are left unscaled."
 (defn apply-dataset-options
   [feature-keys label-keys options dataset]
   (let [first-item (first dataset)
-        categorical-labels (->> (concat (normalize-keys feature-keys)
-                                        (normalize-keys label-keys))
-                                (map #(when (not (number? (get first-item %)))
+        feature-keys (normalize-keys feature-keys)
+        label-keys (normalize-keys label-keys)
+        all-keys (concat feature-keys
+                         label-keys)
+        key-ecount-map (->> (dataset-entry->data all-keys first-item {})
+                            (ecount-map all-keys))
+        categorical-labels (->> all-keys
+                                (map #(when (not (number? (get-dataset-item first-item % {})))
                                         %))
                                 (remove nil?)
                                 seq)
@@ -381,7 +386,14 @@ If label range is not provided then labels are left unscaled."
                        (when label-map
                          {:label-map label-map}))
         coalesced-dataset (coalesce-dataset feature-keys label-keys
-                                            options dataset)]
+                                            options dataset)
+        options (merge options
+                       {:dataset-info {:value-ecount (->> feature-keys
+                                                          (map key-ecount-map)
+                                                          (apply +))
+                                       :key-ecount-map key-ecount-map}
+                        :feature-keys feature-keys
+                        :label-keys label-keys})]
     (cond
       (:range-map options)
       (let [min-max-map (per-parameter-dataset-min-max coalesced-dataset)

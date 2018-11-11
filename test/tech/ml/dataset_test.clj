@@ -95,7 +95,13 @@
     (is (= options {:label-map {:fruit-name {:apple 1 :lemon 4
                                              :mandarin 2 :orange 3}}
                     :deterministic-label-map? true
-                    :multiclass-label-base-index 1}))
+                    :multiclass-label-base-index 1
+                    :dataset-info {:value-ecount 4
+                                   :key-ecount-map
+                                   {:color-score 1 :height 1 :mass 1
+                                    :width 1 :fruit-name 1}}
+                    :feature-keys [:color-score :height :mass :width]
+                    :label-keys [:fruit-name]}))
     (is (= [{:values [0 7 192 8], :label [1]}
 	   {:values [0 6 180 8], :label [1]}
 	   {:values [0 7 176 7], :label [1]}
@@ -139,7 +145,17 @@
                :fruit-name {:apple 1 :mandarin 2
                             :orange 3 :lemon 4}}
               :deterministic-label-map? true
-              :multiclass-label-base-index 1}
+              :multiclass-label-base-index 1
+              :dataset-info {:value-ecount 5
+                             :key-ecount-map {:color-score 1
+                                              :height 1
+                                              :mass 1
+                                              :width 1
+                                              :fruit-subtype 1
+                                              :fruit-name 1}}
+              :feature-keys [:color-score :height :mass
+                             :width :fruit-subtype]
+              :label-keys [:fruit-name]}
              options))
       (is (= [{:values [0 7 192 8 1], :label [1]}
               {:values [0 6 180 8 1], :label [1]}
