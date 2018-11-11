@@ -435,8 +435,6 @@ If label range is not provided then labels are left unscaled."
       (:range-map options)
       (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
                                                        coalesced-dataset)
-            _ (println (vec (first (:values min-max-map)))
-                       (vec (second (:values min-max-map))))
             scale-map (min-max-map->scale-map min-max-map (:range-map options))]
         {:coalesced-dataset (per-parameter-scale-coalesced-dataset
                              scale-map coalesced-dataset)
