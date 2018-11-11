@@ -1,7 +1,8 @@
 (ns tech.ml.dataset-test
   (:require [clojure.test :refer :all]
             [tech.ml.dataset :as dataset]
-            [tech.verify.ml.classification :as vf-classify]))
+            [tech.verify.ml.classification :as vf-classify]
+            [clojure.core.matrix :as m]))
 
 
 (defn- vectorize-result
@@ -13,6 +14,18 @@
                            [k (if (number? v)
                                 (long v)
                                 (mapv long v))]))
+                    (into {}))))))
+
+
+(defn- vectorize-double-result
+  [coalesced-ds]
+  (->> coalesced-ds
+       (mapv (fn [ds-entry]
+               (->> ds-entry
+                    (map (fn [[k v]]
+                           [k (if (number? v)
+                                (double v)
+                                (mapv double v))]))
                     (into {}))))))
 
 
@@ -62,16 +75,19 @@
                               {:values [32 33 34]}
                               {:values [36 37 38]}]]
         (is (= correct
-               (->> (dataset/coalesce-dataset
+               (->> (dataset/apply-dataset-options
                      [:a :b] :c {} test-ds)
+                    :coalesced-dataset
                     vectorize-result)))
         (is (= correct
-               (->> (dataset/coalesce-dataset
+               (->> (dataset/apply-dataset-options
                      [:a :b] :c {:batch-size 1} test-ds)
+                    :coalesced-dataset
                     vectorize-result)))
         (is (= correct-no-label
-               (->> (dataset/coalesce-dataset
+               (->> (dataset/apply-dataset-options
                      [:a :b] nil {:keep-extra? false} test-ds)
+                    :coalesced-dataset
                     vectorize-result)))))
     (testing "batch coalescing"
       (let [correct [{:values [0 1 2 4 5 6], :label [3 7]}
@@ -80,9 +96,29 @@
                      {:values [24 25 26 28 29 30], :label [27 31]}
                      {:values [32 33 34 36 37 38], :label [35 39]}]]
           (is (= correct
-                 (->> (dataset/coalesce-dataset
+                 (->> (dataset/apply-dataset-options
                        [:a :b] :c {:batch-size 2} test-ds)
-                      vectorize-result)))))))
+                      :coalesced-dataset
+                      vectorize-result)))))
+    (testing "batch coalescing with min-max"
+    (let [test-ds (make-test-ds)
+          {:keys [coalesced-dataset options]}
+          (dataset/apply-dataset-options [:a :b] :c
+                                         {:batch-size 2
+                                          :range-map {:values [-1 1]}}
+                                         test-ds)
+          result (vectorize-double-result coalesced-dataset)
+          result-values (mapv :values result)
+          result-labels (mapv #(mapv long (:label %)) result)]
+      (is (= [[3 7] [11 15] [19 23] [27 31] [35 39]]
+             result-labels))
+      (is (m/equals result-values
+                    [[-1.0 -1.0 -1.0 -0.777 -0.777 -0.777]
+                     [-0.555 -0.555 -0.555 -0.333 -0.333 -0.333]
+                     [-0.111 -0.111 -0.111 0.111 0.111 0.111]
+                     [0.333 0.333 0.333 0.555 0.555 0.555]
+                     [0.777 0.777 0.777 1.0 1.0 1.0]]
+                    0.001))))))
 
 
 (deftest test-categorical-data
@@ -112,9 +148,10 @@
                 (take 5)
                 vec)))
     (let [{:keys [coalesced-dataset]}
-          (dataset/apply-dataset-options [:color-score :height :mass :width] :fruit-name
-                                         {:label-map {:fruit-name {:apple 4 :lemon 2
-                                                                   :mandarin 3 :orange 1}}}
+          (dataset/apply-dataset-options
+           [:color-score :height :mass :width] :fruit-name
+           {:label-map {:fruit-name {:apple 4 :lemon 2
+                                     :mandarin 3 :orange 1}}}
                                          test-ds)]
       (is (= [{:values [0 7 192 8], :label [4]}
               {:values [0 6 180 8], :label [4]}
@@ -126,7 +163,8 @@
                   (take 5)
                   vec))))
     (let [{:keys [options coalesced-dataset]}
-          (dataset/apply-dataset-options [:color-score :height :mass :width :fruit-subtype]
+          (dataset/apply-dataset-options [:color-score :height :mass
+                                          :width :fruit-subtype]
                                          :fruit-name
                                          {:deterministic-label-map? true
                                           :multiclass-label-base-index 1} test-ds)]
@@ -165,4 +203,25 @@
              (->> coalesced-dataset
                   vectorize-result
                   (take 5)
-                  vec))))))
+                  vec)))
+      (testing "Categorical data with scaling"
+        (let [{:keys [options coalesced-dataset]}
+              (dataset/apply-dataset-options [:color-score :height :mass
+                                              :width :fruit-subtype]
+                                             :fruit-name
+                                             {:deterministic-label-map? true
+                                              :multiclass-label-base-index 1
+                                              :range-map {:values [-1 1]}}
+                                             test-ds)]
+          (is (m/equals
+               [[-1.0 0.0153 -0.188 0.368 -1.0]
+                [-0.789 -0.138 -0.272 0.157 -1.0]
+                [-0.736 -0.0153 -0.300 -0.157 -1.0]
+                [0.315 -0.784 -0.930 -0.789 -0.777]
+                [0.263 -0.815 -0.944 -0.894 -0.777]]
+               (->> coalesced-dataset
+                    vectorize-double-result
+                    (map :values)
+                    (take 5)
+                    vec)
+               0.001)))))))

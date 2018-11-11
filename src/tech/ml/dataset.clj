@@ -9,7 +9,8 @@
   to provide direct, simple tools to provide either type of coalesced information.
 
   Care has been taken to keep certain operations lazy so that datasets of unbounded
-  length can be manipulated."
+  length can be manipulated.  Operatings like auto-scaling, however, will read the
+  dataset into memory."
   (:require [tech.datatype :as dtype]
             [tech.parallel :as parallel]
             [tech.compute.cpu.tensor-math :as cpu-tm]
@@ -181,14 +182,13 @@ options are:
   ;;Quick out of this dataset has already been coalesced
   dataset
   (let [[dataset feature-keys label-keys
-         value-ecount label-ecount
-         expected-ecount-map]
+         value-ecount label-ecount]
         (let [{:keys [dataset value-ecount label-ecount]}
               (dataset->batched-dataset feature-keys label-keys batch-size
                                         options dataset)]
           [dataset [:values] (when (normalize-keys label-keys)
                                [:label])
-           value-ecount label-ecount nil])
+           value-ecount label-ecount])
         all-keys (concat feature-keys label-keys)
         n-features (count feature-keys)
 
@@ -281,27 +281,32 @@ options are:
 
 
 (defn- update-min-max
-  [old-val new-val]
+  [old-val batch-size new-val]
   ;;Ensure we have jvm-representable values (not pointers to c objects)
-  (if-not old-val
-    (let [min-container (ct/clone new-val)
-          max-container (ct/clone new-val)]
-      [min-container max-container])
-    (let [[min-container max-container] old-val]
-      [(ops/min min-container new-val)
-       (ops/max max-container new-val)])))
+  (let [[min-container max-container]
+        (or old-val
+            (let [container-shape [(quot (dtype/ecount new-val)
+                                         batch-size)]
+                  first-row (ct/in-place-reshape new-val container-shape)]
+              [(-> (ct/from-prototype new-val :shape container-shape)
+                   (ct/assign! first-row))
+               (-> (ct/from-prototype new-val :shape container-shape)
+                   (ct/assign! first-row))]))]
+    [(ops/min min-container new-val)
+     (ops/max max-container new-val)]))
 
 
 (defn per-parameter-dataset-min-max
   "Create a new (coalesced) dataset with parameters scaled.
 If label range is not provided then labels are left unscaled."
-  [coalesced-dataset]
-  (reduce (fn [min-max-map {:keys [values label]}]
-            (cond-> min-max-map
-              values (update :values update-min-max values)
-              label (update :label update-min-max label)))
-          {}
-          coalesced-dataset))
+  [batch-size coalesced-dataset]
+  (let [batch-size (long (or batch-size 1))]
+    (reduce (fn [min-max-map {:keys [values label]}]
+              (cond-> min-max-map
+                values (update :values update-min-max batch-size values)
+                label (update :label update-min-max batch-size label)))
+            {}
+            coalesced-dataset)))
 
 
 (defn min-max-map->scale-map
@@ -322,7 +327,7 @@ If label range is not provided then labels are left unscaled."
        (into {})))
 
 
-(defn per-parameter-scale-coalesced-dataset!
+(defn per-parameter-scale-coalesced-dataset
   "scale a coalesced dataset in place"
   [scale-map coalesced-dataset]
   (->> coalesced-dataset
@@ -341,6 +346,35 @@ If label range is not provided then labels are left unscaled."
 
 
 (defn apply-dataset-options
+  "Apply dataset options to dataset producing a coalesced dataset and a new options map.
+  A coalesced dataset is a dataset where all the feature keys are coalesced into a
+  contiguous :values member and all the labels are coalesced into a contiguous :labels
+  member.
+
+  Transformations:
+
+  If the dataset as nominal (not numeric) data then this data is converted into integer
+  data and the original keys mapped to the indexes.  This is recorded in :label-map.
+
+  Some global information about the dataset is recorded:
+  :dataset-info {:value-ecount - Ecount of the feature vector.
+                 :key-ecount-map - map of keys to ecounts for all keys.}
+
+  :feature-keys normaliaed feature keys.
+  :label-keys normalized label keys.
+
+  :range-map - if passed in, coalesced :values or :label's are set to the ranges
+  specified in the map.  This means a min-max pass is performed and per-element scaling
+  is done.  See tests for example. The result of a range map operation is a per-element
+  scale map.
+
+  :scale-map - if passed in, this is a map of #{:values :label} to a scaling operation:
+       (-> (ct/clone v)
+           (ops/- (:per-elem-subtract scale-entry))
+           (ops// (:per-elem-div scale-entry))
+           (ops/+ (:per-elem-bias scale-entry)))
+
+  "
   [feature-keys label-keys options dataset]
   (let [first-item (first dataset)
         feature-keys (normalize-keys feature-keys)
@@ -350,8 +384,11 @@ If label range is not provided then labels are left unscaled."
         key-ecount-map (->> (dataset-entry->data all-keys first-item {})
                             (ecount-map all-keys))
         categorical-labels (->> all-keys
-                                (map #(when (not (number? (get-dataset-item first-item % {})))
-                                        %))
+                                (map #(let [item (get-dataset-item
+                                                  first-item % {})]
+                                        (when (or (string? item)
+                                                  (keyword? item))
+                                          %)))
                                 (remove nil?)
                                 seq)
         label-map (get options :label-map)
@@ -396,15 +433,18 @@ If label range is not provided then labels are left unscaled."
                         :label-keys label-keys})]
     (cond
       (:range-map options)
-      (let [min-max-map (per-parameter-dataset-min-max coalesced-dataset)
+      (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
+                                                       coalesced-dataset)
+            _ (println (vec (first (:values min-max-map)))
+                       (vec (second (:values min-max-map))))
             scale-map (min-max-map->scale-map min-max-map (:range-map options))]
-        {:coalesced-dataset (per-parameter-scale-coalesced-dataset!
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
                              scale-map coalesced-dataset)
          :options (-> (dissoc options :range-map)
                       (assoc :scale-map scale-map))})
       (:scale-map options)
       (let [scale-map (:scale-map options)]
-        {:coalesced-dataset (per-parameter-scale-coalesced-dataset!
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
                              scale-map coalesced-dataset)
          :options options})
       :else
