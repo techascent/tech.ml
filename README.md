@@ -1,5 +1,7 @@
 # tech.ml-base
 
+[![Clojars Project](https://img.shields.io/clojars/v/techascent/tech.ml-base.svg)](https://clojars.org/techascent/tech.ml-base)
+
 Library to encapsulate a few core concepts of techascent system.
 
 *  Dataset as sequence of maps
