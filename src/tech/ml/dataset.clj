@@ -425,10 +425,14 @@ If label range is not provided then labels are left unscaled."
         coalesced-dataset (coalesce-dataset feature-keys label-keys
                                             options dataset)
         options (merge options
-                       {:dataset-info {:value-ecount (->> feature-keys
-                                                          (map key-ecount-map)
-                                                          (apply +))
-                                       :key-ecount-map key-ecount-map}
+
+                       {:dataset-info (merge {:value-ecount (->> feature-keys
+                                                                 (map key-ecount-map)
+                                                                 (apply +))
+                                              :key-ecount-map key-ecount-map}
+                                             (when (and (= 1 (count label-keys))
+                                                        (get label-map (first label-keys)))
+                                               {:num-classes (count (get label-map (first label-keys)))}))
                         :feature-keys feature-keys
                         :label-keys label-keys})]
     (cond

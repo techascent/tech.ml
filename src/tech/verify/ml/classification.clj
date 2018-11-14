@@ -36,7 +36,8 @@
   (let [{:keys [train-ds test-ds]} (->> (fruit-dataset)
                                         (dataset/->train-test-split {}))
         model (ml/train system-name fruit-feature-keys fruit-label
-                        (merge {:model-type :classification}
+                        (merge {:model-type :classification
+                                :range-map {:values [-1 1]}}
                                options)
                         train-ds)
         test-output (ml/predict model test-ds)
