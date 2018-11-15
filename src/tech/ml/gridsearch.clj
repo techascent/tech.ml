@@ -48,10 +48,12 @@
 (defn nominative
   "Non-numeric data.  Vector of options."
   [label-vec]
-  (make-gridsearch-fn [0 (max 0 (dec (count label-vec)))]
-                      (fn [^double item-val]
-                        (let [idx (long (Math/round item-val))]
-                          (get label-vec idx)))))
+  (let [label-count (count label-vec)
+        max-idx (dec label-count)]
+    (make-gridsearch-fn [0 (max 0 (count label-vec))]
+                        (fn [^double item-val]
+                          (let [idx (min max-idx (long (Math/floor item-val)))]
+                            (get label-vec idx))))))
 
 
 (defn- map->path-value-seq*
