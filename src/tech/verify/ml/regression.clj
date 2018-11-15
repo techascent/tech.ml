@@ -63,20 +63,21 @@
     (is (< mse 0.01))))
 
 
-(defn gridsearch
+(defn auto-gridsearch-simple
   [system-name options]
-  (let [{train-dataset :train-ds
-         test-dataset :test-ds} (datasets)
-        feature-keys [:x]
-        label :y
-        train-fn (partial ml/train system-name feature-keys label)
-        predict-fn ml/predict
-        k-fold-ds (dataset/->k-fold-datasets 5 {} train-dataset)
-        option-seq [(merge {:model-type :regression} options)
-                    (merge {:model-type :regression} options)]
-        {:keys [error options]} (train/find-best-options train-fn predict-fn
-                                                         label
-                                                         loss/mse {}
-                                                         option-seq k-fold-ds)
-        mse (or (:mse options) 0.01)]
-    (is (< error mse))))
+  ;;Pre-scale the dataset.
+  (let [gs-options (ml/auto-gridsearch-options
+                    system-name
+                    (merge {:model-type :regression}
+                           options))
+        retval (ml/gridsearch [[system-name gs-options]]
+                              [:x] :y
+                              loss/mse (:train-ds (datasets))
+                              :scalar-labels? true
+                              :gridsearch-depth (or (get options :gridsearch-depth)
+                                                    100)
+                              :range-map {:values [-1 1]})]
+    (is (< (double (:error (first retval)))
+           (double (or (:mse-loss options)
+                       0.2))))
+    retval))

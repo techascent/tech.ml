@@ -1,6 +1,7 @@
 (ns tech.ml.train
   (:require [tech.ml.dataset :as dataset]
-            [tech.parallel :as parallel]))
+            [tech.parallel :as parallel]
+            [tech.datatype :as dtype]))
 
 
 (defn dataset-seq->dataset-model-seq
@@ -18,12 +19,12 @@
 (defn average-prediction-error
   "Average prediction error across models generated with these datasets
   Page 242, https://web.stanford.edu/~hastie/ElemStatLearn/"
-  [train-fn predict-fn label-key loss-fn dataset-seq]
+  [train-fn predict-fn ds-entry->label-fn loss-fn dataset-seq]
   (->> (dataset-seq->dataset-model-seq train-fn dataset-seq)
        (map (fn [{:keys [test-ds model]}]
               (let [predictions (predict-fn model test-ds)
                     labels (->> test-ds
-                                (map #(dataset/get-dataset-item % label-key {})))]
+                                (map ds-entry->label-fn))]
                 (loss-fn predictions labels))))
        (apply +)
        (* (/ 1.0 (count dataset-seq)))))
@@ -59,9 +60,10 @@ predict-fn: (predict-fn options dataset) -> prediction-sequence
 label-key: key to get labels from dataset.
 loss-fn: (loss-fn label-sequence prediction-sequence)-> double
   Lowest number wins."
-  [train-fn predict-fn label-key loss-fn {:keys [parallelism]
+  [train-fn predict-fn label-key loss-fn {:keys [parallelism top-n]
                                           :or {parallelism (.availableProcessors
-                                                            (Runtime/getRuntime))}}
+                                                            (Runtime/getRuntime))
+                                               top-n 5}}
    option-seq dataset-seq]
   (->> option-seq
        (parallel/queued-pmap
@@ -74,9 +76,8 @@ loss-fn: (loss-fn label-sequence prediction-sequence)-> double
                    label-key
                    loss-fn
                    dataset-seq)}))
-       (reduce (fn [best-map {:keys [options error] :as next-map}]
-                 (if (or (not best-map)
-                         (< (double error)
-                            (double (:error best-map))))
-                   next-map
-                   best-map)))))
+       (reduce (fn [best-models {:keys [options error] :as next-map}]
+                 (->> (conj best-models next-map)
+                      (sort-by :error)
+                      (take top-n)
+                      vec)))))

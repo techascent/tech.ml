@@ -29,3 +29,10 @@ that label."
                          count)]
     (/ (double num-correct)
        (double num-items))))
+
+
+(defn classification-loss
+  "1.0 - classification-accuracy."
+  ^double [model-output label-seq]
+  (- 1.0
+     (classification-accuracy model-output label-seq)))

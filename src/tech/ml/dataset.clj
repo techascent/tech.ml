@@ -179,8 +179,6 @@ options are:
                                  batch-size 1}
                             :as options}
    dataset]
-  ;;Quick out of this dataset has already been coalesced
-  dataset
   (let [[dataset feature-keys label-keys
          value-ecount label-ecount]
         (let [{:keys [dataset value-ecount label-ecount]}
@@ -376,79 +374,94 @@ If label range is not provided then labels are left unscaled."
 
   "
   [feature-keys label-keys options dataset]
-  (let [first-item (first dataset)
-        feature-keys (normalize-keys feature-keys)
-        label-keys (normalize-keys label-keys)
-        all-keys (concat feature-keys
-                         label-keys)
-        key-ecount-map (->> (dataset-entry->data all-keys first-item {})
-                            (ecount-map all-keys))
-        categorical-labels (->> all-keys
-                                (map #(let [item (get-dataset-item
-                                                  first-item % {})]
-                                        (when (or (string? item)
-                                                  (keyword? item))
-                                          %)))
-                                (remove nil?)
-                                seq)
-        label-map (get options :label-map)
-        label-map
-        ;;scan dataset for labels.
-        (if (and categorical-labels
-                 (not label-map))
-          (let [label-atom (atom {})
-                label-base-idx (long (or (:multiclass-label-base-index options)
-                                         0))
-                map-fn (if (:deterministic-label-map? options)
-                         map
-                         pmap)]
-            (->> dataset
-                 (map-fn
-                  (fn [ds-entry]
-                    (->> categorical-labels
-                         (map (fn [cat-label]
-                                (let [ds-value (get ds-entry cat-label)]
-                                  (swap! label-atom update cat-label
-                                         (fn [existing]
-                                           (if-let [idx (get existing ds-value)]
-                                             existing
-                                             (assoc existing ds-value
-                                                    (+ label-base-idx
-                                                       (count existing)))))))))
-                         dorun)
-                    ds-entry))
-                 dorun)
-            @label-atom))
-        options (merge options
-                       (when label-map
-                         {:label-map label-map}))
-        coalesced-dataset (coalesce-dataset feature-keys label-keys
-                                            options dataset)
-        options (merge options
+  (let [first-item (first dataset)]
+    (if (and (contains? first-item :values)
+             (contains? first-item :label)
+             (contains? options :dataset-info))
+      ;;This has already been coalesced
+      (do
+        (when-not (and (= [:values] (normalize-keys feature-keys))
+                       (or (= [:label] (normalize-keys label-keys))
+                           (= nil label-keys)))
+          (throw (ex-info "Dataset appears coalesced but new keys appear to be added"
+                          {:feature-keys feature-keys
+                           :label-keys label-keys})))
+        {:options options
+         :coalesced-dataset
+         ;;Then we re-coalesce as this may change the container type.
+         (coalesce-dataset feature-keys label-keys options dataset)})
+      ;;Else do the work of analyzing and coalescing the dataset.
+      (let [feature-keys (normalize-keys feature-keys)
+            label-keys (normalize-keys label-keys)
+            all-keys (concat feature-keys label-keys)
+            key-ecount-map (->> (dataset-entry->data all-keys first-item {})
+                                (ecount-map all-keys))
+            categorical-labels (->> all-keys
+                                    (map #(let [item (get-dataset-item
+                                                      first-item % {})]
+                                            (when (or (string? item)
+                                                      (keyword? item))
+                                              %)))
+                                    (remove nil?)
+                                    seq)
+            label-map (get options :label-map)
+            label-map
+            ;;scan dataset for labels.
+            (if (and categorical-labels
+                     (not label-map))
+              (let [label-atom (atom {})
+                    label-base-idx (long (or (:multiclass-label-base-index options)
+                                             0))
+                    map-fn (if (:deterministic-label-map? options)
+                             map
+                             pmap)]
+                (->> dataset
+                     (map-fn
+                      (fn [ds-entry]
+                        (->> categorical-labels
+                             (map (fn [cat-label]
+                                    (let [ds-value (get ds-entry cat-label)]
+                                      (swap! label-atom update cat-label
+                                             (fn [existing]
+                                               (if-let [idx (get existing ds-value)]
+                                                 existing
+                                                 (assoc existing ds-value
+                                                        (+ label-base-idx
+                                                           (count existing)))))))))
+                             dorun)
+                        ds-entry))
+                     dorun)
+                @label-atom))
+            options (merge options
+                           (when label-map
+                             {:label-map label-map}))
 
-                       {:dataset-info (merge {:value-ecount (->> feature-keys
-                                                                 (map key-ecount-map)
-                                                                 (apply +))
-                                              :key-ecount-map key-ecount-map}
-                                             (when (and (= 1 (count label-keys))
-                                                        (get label-map (first label-keys)))
-                                               {:num-classes (count (get label-map (first label-keys)))}))
-                        :feature-keys feature-keys
-                        :label-keys label-keys})]
-    (cond
-      (:range-map options)
-      (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
-                                                       coalesced-dataset)
-            scale-map (min-max-map->scale-map min-max-map (:range-map options))]
-        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
-                             scale-map coalesced-dataset)
-         :options (-> (dissoc options :range-map)
-                      (assoc :scale-map scale-map))})
-      (:scale-map options)
-      (let [scale-map (:scale-map options)]
-        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
-                             scale-map coalesced-dataset)
-         :options options})
-      :else
-      {:coalesced-dataset coalesced-dataset
-       :options options})))
+            coalesced-dataset (coalesce-dataset feature-keys label-keys
+                                                options dataset)
+            options (merge options
+                           {:dataset-info (merge {:value-ecount (->> feature-keys
+                                                                     (map key-ecount-map)
+                                                                     (apply +))
+                                                  :key-ecount-map key-ecount-map}
+                                                 (when (and (= 1 (count label-keys))
+                                                            (get label-map (first label-keys)))
+                                                   {:num-classes (count (get label-map (first label-keys)))}))
+                            :feature-keys feature-keys
+                            :label-keys label-keys})]
+        (cond
+          (:range-map options)
+          (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
+                                                           coalesced-dataset)
+                scale-map (min-max-map->scale-map min-max-map (:range-map options))]
+            {:coalesced-dataset (per-parameter-scale-coalesced-dataset
+                                 scale-map coalesced-dataset)
+             :options (-> (dissoc options :range-map)
+                          (assoc :scale-map scale-map))})
+          (:scale-map options)
+          (let [scale-map (:scale-map options)]
+            {:coalesced-dataset (per-parameter-scale-coalesced-dataset
+                                 scale-map coalesced-dataset)
+             :options options})
+          :else
+          {:coalesced-dataset coalesced-dataset
+           :options options})))))

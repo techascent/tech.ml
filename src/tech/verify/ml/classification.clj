@@ -46,3 +46,21 @@
                 options)
                0.7)
            (loss/classification-accuracy test-output labels)))))
+
+
+(defn auto-gridsearch-fruit
+  [system-name options]
+  (let [gs-options (ml/auto-gridsearch-options
+                    system-name
+                    (merge {:model-type :classification}
+                           options))
+        retval (ml/gridsearch [[system-name gs-options]]
+                              fruit-feature-keys fruit-label
+                              loss/classification-loss (fruit-dataset)
+                              ;;Small k-fold because tiny dataset
+                              :k-fold 3
+                              :range-map {:values [-1 1]})]
+    (is (< (double (:error (first retval)))
+           (double (or (:classification-loss options)
+                       0.1))))
+    retval))
