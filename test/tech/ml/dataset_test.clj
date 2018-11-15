@@ -133,6 +133,7 @@
                     :deterministic-label-map? true
                     :multiclass-label-base-index 1
                     :dataset-info {:value-ecount 4
+                                   :num-classes 4
                                    :key-ecount-map
                                    {:color-score 1 :height 1 :mass 1
                                     :width 1 :fruit-name 1}}
@@ -185,6 +186,7 @@
               :deterministic-label-map? true
               :multiclass-label-base-index 1
               :dataset-info {:value-ecount 5
+                             :num-classes 4
                              :key-ecount-map {:color-score 1
                                               :height 1
                                               :mass 1
