@@ -72,7 +72,8 @@
                    1.0 :positive}]
     {:train-ds (parse-svm-file "data/leu" label-map)
      :test-ds (parse-svm-file "data/leu.t" label-map)
-     :type :classification}))
+     :type :classification
+     :name :leukemia}))
 
 
 (defn duke-breast-cancer
@@ -82,7 +83,8 @@
                    1.0 :positive}]
     {:train-ds (parse-svm-file "data/duke.tr" label-map)
      :test-ds (parse-svm-file "data/duke.val" label-map)
-     :type :classification}))
+     :type :classification
+     :name :duke-breast-cancer}))
 
 
 (defn test-ds-1
@@ -91,7 +93,8 @@
                    1.0 :positive}]
     {:train-ds (parse-svm-file "data/train.1" label-map)
      :test-ds (parse-svm-file "data/test.1" label-map)
-     :type :classification}))
+     :type :classification
+     :name :test-dataset-1}))
 
 
 (defn test-ds-2
@@ -100,7 +103,8 @@
                    2.0 :second
                    3.0 :third}]
     {:type :classification
-     :train-ds (parse-svm-file "data/train.2" label-map)}))
+     :train-ds (parse-svm-file "data/train.2" label-map)
+     :name :test-dataset-2}))
 
 
 (defn test-ds-3
@@ -109,4 +113,17 @@
                    1.0 :positive}]
     {:type :classification
      :train-ds (parse-svm-file "data/train.3" label-map)
-     :test-ds (parse-svm-file "data/test.3" label-map)}))
+     :test-ds (parse-svm-file "data/test.3" label-map)
+     :name :test-dataset-3}))
+
+
+
+(defn all-datasets
+  []
+  (->> [leukemia
+        duke-breast-cancer
+        test-ds-1
+        test-ds-2
+        test-ds-3]
+       (map (fn [ds-fn]
+              (ds-fn)))))
