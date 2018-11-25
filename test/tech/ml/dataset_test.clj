@@ -43,37 +43,37 @@
 (deftest dataset-base
   (let [test-ds (make-test-ds)]
     (testing "basic coalescing"
-      (let [correct [{:values [0 1 2], :label [3]}
-                     {:values [4 5 6], :label [7]}
-                     {:values [8 9 10], :label [11]}
-                     {:values [12 13 14], :label [15]}
-                     {:values [16 17 18], :label [19]}
-                     {:values [20 21 22], :label [23]}
-                     {:values [24 25 26], :label [27]}
-                     {:values [28 29 30], :label [31]}
-                     {:values [32 33 34], :label [35]}
-                     {:values [36 37 38], :label [39]}]
+      (let [correct [{::dataset/features [0 1 2], ::dataset/label [3]}
+                     {::dataset/features [4 5 6], ::dataset/label [7]}
+                     {::dataset/features [8 9 10], ::dataset/label [11]}
+                     {::dataset/features [12 13 14], ::dataset/label [15]}
+                     {::dataset/features [16 17 18], ::dataset/label [19]}
+                     {::dataset/features [20 21 22], ::dataset/label [23]}
+                     {::dataset/features [24 25 26], ::dataset/label [27]}
+                     {::dataset/features [28 29 30], ::dataset/label [31]}
+                     {::dataset/features [32 33 34], ::dataset/label [35]}
+                     {::dataset/features [36 37 38], ::dataset/label [39]}]
             correct-scalar-label
-            [{:values [0 1 2], :label 3}
-             {:values [4 5 6], :label 7}
-             {:values [8 9 10], :label 11}
-             {:values [12 13 14], :label 15}
-             {:values [16 17 18], :label 19}
-             {:values [20 21 22], :label 23}
-             {:values [24 25 26], :label 27}
-             {:values [28 29 30], :label 31}
-             {:values [32 33 34], :label 35}
-             {:values [36 37 38], :label 39}]
-            correct-no-label [{:values [0 1 2]}
-                              {:values [4 5 6]}
-                              {:values [8 9 10]}
-                              {:values [12 13 14]}
-                              {:values [16 17 18]}
-                              {:values [20 21 22]}
-                              {:values [24 25 26]}
-                              {:values [28 29 30]}
-                              {:values [32 33 34]}
-                              {:values [36 37 38]}]]
+            [{::dataset/features [0 1 2], ::dataset/label 3}
+             {::dataset/features [4 5 6], ::dataset/label 7}
+             {::dataset/features [8 9 10], ::dataset/label 11}
+             {::dataset/features [12 13 14], ::dataset/label 15}
+             {::dataset/features [16 17 18], ::dataset/label 19}
+             {::dataset/features [20 21 22], ::dataset/label 23}
+             {::dataset/features [24 25 26], ::dataset/label 27}
+             {::dataset/features [28 29 30], ::dataset/label 31}
+             {::dataset/features [32 33 34], ::dataset/label 35}
+             {::dataset/features [36 37 38], ::dataset/label 39}]
+            correct-no-label [{::dataset/features [0 1 2]}
+                              {::dataset/features [4 5 6]}
+                              {::dataset/features [8 9 10]}
+                              {::dataset/features [12 13 14]}
+                              {::dataset/features [16 17 18]}
+                              {::dataset/features [20 21 22]}
+                              {::dataset/features [24 25 26]}
+                              {::dataset/features [28 29 30]}
+                              {::dataset/features [32 33 34]}
+                              {::dataset/features [36 37 38]}]]
         (is (= correct
                (->> (dataset/apply-dataset-options
                      [:a :b] :c {} test-ds)
@@ -90,11 +90,11 @@
                     :coalesced-dataset
                     vectorize-result)))))
     (testing "batch coalescing"
-      (let [correct [{:values [0 1 2 4 5 6], :label [3 7]}
-                     {:values [8 9 10 12 13 14], :label [11 15]}
-                     {:values [16 17 18 20 21 22], :label [19 23]}
-                     {:values [24 25 26 28 29 30], :label [27 31]}
-                     {:values [32 33 34 36 37 38], :label [35 39]}]]
+      (let [correct [{::dataset/features [0 1 2 4 5 6], ::dataset/label [3 7]}
+                     {::dataset/features [8 9 10 12 13 14], ::dataset/label [11 15]}
+                     {::dataset/features [16 17 18 20 21 22], ::dataset/label [19 23]}
+                     {::dataset/features [24 25 26 28 29 30], ::dataset/label [27 31]}
+                     {::dataset/features [32 33 34 36 37 38], ::dataset/label [35 39]}]]
           (is (= correct
                  (->> (dataset/apply-dataset-options
                        [:a :b] :c {:batch-size 2} test-ds)
@@ -105,11 +105,11 @@
           {:keys [coalesced-dataset options]}
           (dataset/apply-dataset-options [:a :b] :c
                                          {:batch-size 2
-                                          :range-map {:values [-1 1]}}
+                                          :range-map {::dataset/features [-1 1]}}
                                          test-ds)
           result (vectorize-double-result coalesced-dataset)
-          result-values (mapv :values result)
-          result-labels (mapv #(mapv long (:label %)) result)]
+          result-values (mapv ::dataset/features result)
+          result-labels (mapv #(mapv long (::dataset/label %)) result)]
       (is (= [[3 7] [11 15] [19 23] [27 31] [35 39]]
              result-labels))
       (is (m/equals result-values
@@ -132,18 +132,18 @@
                                              :mandarin 2 :orange 3}}
                     :deterministic-label-map? true
                     :multiclass-label-base-index 1
-                    :dataset-info {:value-ecount 4
-                                   :num-classes 4
-                                   :key-ecount-map
-                                   {:color-score 1 :height 1 :mass 1
-                                    :width 1 :fruit-name 1}}
-                    :feature-keys [:color-score :height :mass :width]
-                    :label-keys [:fruit-name]}))
-    (is (= [{:values [0 7 192 8], :label [1]}
-	   {:values [0 6 180 8], :label [1]}
-	   {:values [0 7 176 7], :label [1]}
-	   {:values [0 4 86 6], :label [2]}
-	   {:values [0 4 84 6], :label [2]}]
+                    ::dataset/dataset-info {::dataset/value-ecount 4
+                                            ::dataset/num-classes 4
+                                            ::dataset/key-ecount-map
+                                            {:color-score 1 :height 1 :mass 1
+                                             :width 1 :fruit-name 1}}
+                    ::dataset/feature-keys [:color-score :height :mass :width]
+                    ::dataset/label-keys [:fruit-name]}))
+    (is (= [{::dataset/features [0 7 192 8], ::dataset/label [1]}
+	   {::dataset/features [0 6 180 8], ::dataset/label [1]}
+	   {::dataset/features [0 7 176 7], ::dataset/label [1]}
+	   {::dataset/features [0 4 86 6], ::dataset/label [2]}
+	   {::dataset/features [0 4 84 6], ::dataset/label [2]}]
            (->> coalesced-dataset
                 vectorize-result
                 (take 5)
@@ -153,12 +153,12 @@
            [:color-score :height :mass :width] :fruit-name
            {:label-map {:fruit-name {:apple 4 :lemon 2
                                      :mandarin 3 :orange 1}}}
-                                         test-ds)]
-      (is (= [{:values [0 7 192 8], :label [4]}
-              {:values [0 6 180 8], :label [4]}
-              {:values [0 7 176 7], :label [4]}
-              {:values [0 4 86 6], :label [3]}
-              {:values [0 4 84 6], :label [3]}]
+           test-ds)]
+      (is (= [{::dataset/features [0 7 192 8], ::dataset/label [4]}
+              {::dataset/features [0 6 180 8], ::dataset/label [4]}
+              {::dataset/features [0 7 176 7], ::dataset/label [4]}
+              {::dataset/features [0 4 86 6], ::dataset/label [3]}
+              {::dataset/features [0 4 84 6], ::dataset/label [3]}]
              (->> coalesced-dataset
                   vectorize-result
                   (take 5)
@@ -185,23 +185,23 @@
                             :orange 3 :lemon 4}}
               :deterministic-label-map? true
               :multiclass-label-base-index 1
-              :dataset-info {:value-ecount 5
-                             :num-classes 4
-                             :key-ecount-map {:color-score 1
-                                              :height 1
-                                              :mass 1
-                                              :width 1
-                                              :fruit-subtype 1
-                                              :fruit-name 1}}
-              :feature-keys [:color-score :height :mass
+              ::dataset/dataset-info {::dataset/value-ecount 5
+                                      ::dataset/num-classes 4
+                                      ::dataset/key-ecount-map {:color-score 1
+                                                                :height 1
+                                                                :mass 1
+                                                                :width 1
+                                                                :fruit-subtype 1
+                                                                :fruit-name 1}}
+              ::dataset/feature-keys [:color-score :height :mass
                              :width :fruit-subtype]
-              :label-keys [:fruit-name]}
+              ::dataset/label-keys [:fruit-name]}
              options))
-      (is (= [{:values [0 7 192 8 1], :label [1]}
-              {:values [0 6 180 8 1], :label [1]}
-              {:values [0 7 176 7 1], :label [1]}
-              {:values [0 4 86 6 2], :label [2]}
-              {:values [0 4 84 6 2], :label [2]}]
+      (is (= [{::dataset/features [0 7 192 8 1], ::dataset/label [1]}
+              {::dataset/features [0 6 180 8 1], ::dataset/label [1]}
+              {::dataset/features [0 7 176 7 1], ::dataset/label [1]}
+              {::dataset/features [0 4 86 6 2], ::dataset/label [2]}
+              {::dataset/features [0 4 84 6 2], ::dataset/label [2]}]
              (->> coalesced-dataset
                   vectorize-result
                   (take 5)
@@ -213,7 +213,7 @@
                                              :fruit-name
                                              {:deterministic-label-map? true
                                               :multiclass-label-base-index 1
-                                              :range-map {:values [-1 1]}}
+                                              :range-map {::dataset/features [-1 1]}}
                                              test-ds)]
           (is (m/equals
                [[-1.0 0.0153 -0.188 0.368 -1.0]
@@ -223,7 +223,7 @@
                 [0.263 -0.815 -0.944 -0.894 -0.777]]
                (->> coalesced-dataset
                     vectorize-double-result
-                    (map :values)
+                    (map ::dataset/features)
                     (take 5)
                     vec)
                0.001)))))))

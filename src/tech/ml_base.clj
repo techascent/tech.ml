@@ -99,7 +99,7 @@ first try."
                         (take gridsearch-depth)
                         (map (fn [gs-opt] [system-name (merge options gs-opt)])))))
          (parallel/queued-pmap
-          parallelism
+          0
           (fn [sys-op-pair]
             {:system (first sys-op-pair)
              :options (second sys-op-pair)

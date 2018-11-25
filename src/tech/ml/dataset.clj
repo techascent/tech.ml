@@ -90,7 +90,7 @@
   :ensure-commensurate? Ensure all batches are of same size.
 
   Returns
-  {:values :label :extra-data}"
+  {::features ::label :extra-data}"
   [feature-keys label-keys batch-size {:keys [keep-extra? label-map]
                                        :or {keep-extra? true}
                                        :as options}
@@ -127,15 +127,15 @@
                                                                    ds-entry
                                                                    options)
                                  leftover (apply dissoc ds-entry all-keys)]
-                             (cond-> {:values (take n-features entry-values)
-                                      :label (drop n-features entry-values)}
+                             (cond-> {::features (take n-features entry-values)
+                                      ::label (drop n-features entry-values)}
                                (and keep-extra? (seq leftover))
                                (assoc :extra-data leftover))))))
                    leftover (->> (map :extra-data interleaved-items)
                                  (remove nil?)
                                  seq)]
-               (cond-> {:values (mapcat :values interleaved-items)
-                        :label (mapcat :label interleaved-items)}
+               (cond-> {::features (mapcat ::features interleaved-items)
+                        ::label (mapcat ::label interleaved-items)}
                  (and leftover keep-extra?)
                  (assoc :extra-data leftover))))))}))
 
@@ -163,7 +163,7 @@ options are:
                 data item for things like visualizations.
 
   Returns a sequence of
-  {:values - container of datatype
+  {::features - container of datatype
    :labels - container or scalar}"
   [feature-keys label-keys {:keys [datatype
                                    unchecked?
@@ -184,8 +184,8 @@ options are:
         (let [{:keys [dataset value-ecount label-ecount]}
               (dataset->batched-dataset feature-keys label-keys batch-size
                                         options dataset)]
-          [dataset [:values] (when (normalize-keys label-keys)
-                               [:label])
+          [dataset [::features] (when (normalize-keys label-keys)
+                                  [::label])
            value-ecount label-ecount])
         all-keys (concat feature-keys label-keys)
         n-features (count feature-keys)
@@ -216,11 +216,11 @@ options are:
               (merge (if keep-extra?
                        (apply dissoc dataset-entry all-keys)
                        {})
-                     {:values (first (dtype/copy-raw->item!
+                     {::features (first (dtype/copy-raw->item!
                                       feature-data feature-container 0
                                       container-fn-options))}
                      (when label-keys
-                       {:label (if label-container
+                       {::label (if label-container
                                  (first (dtype/copy-raw->item!
                                          label-data label-container 0
                                          container-fn-options))
@@ -299,10 +299,10 @@ options are:
 If label range is not provided then labels are left unscaled."
   [batch-size coalesced-dataset]
   (let [batch-size (long (or batch-size 1))]
-    (reduce (fn [min-max-map {:keys [values label]}]
+    (reduce (fn [min-max-map {:keys [::features ::label]}]
               (cond-> min-max-map
-                values (update :values update-min-max batch-size values)
-                label (update :label update-min-max batch-size label)))
+                features (update ::features update-min-max batch-size features)
+                label (update ::label update-min-max batch-size label)))
             {}
             coalesced-dataset)))
 
@@ -346,7 +346,7 @@ If label range is not provided then labels are left unscaled."
 (defn apply-dataset-options
   "Apply dataset options to dataset producing a coalesced dataset and a new options map.
   A coalesced dataset is a dataset where all the feature keys are coalesced into a
-  contiguous :values member and all the labels are coalesced into a contiguous :labels
+  contiguous ::features member and all the labels are coalesced into a contiguous ::labels
   member.
 
   Transformations:
@@ -355,18 +355,18 @@ If label range is not provided then labels are left unscaled."
   data and the original keys mapped to the indexes.  This is recorded in :label-map.
 
   Some global information about the dataset is recorded:
-  :dataset-info {:value-ecount - Ecount of the feature vector.
+  ::dataset-info {:value-ecount - Ecount of the feature vector.
                  :key-ecount-map - map of keys to ecounts for all keys.}
 
   :feature-keys normaliaed feature keys.
   :label-keys normalized label keys.
 
-  :range-map - if passed in, coalesced :values or :label's are set to the ranges
+  :range-map - if passed in, coalesced ::features or ::label's are set to the ranges
   specified in the map.  This means a min-max pass is performed and per-element scaling
   is done.  See tests for example. The result of a range map operation is a per-element
   scale map.
 
-  :scale-map - if passed in, this is a map of #{:values :label} to a scaling operation:
+  :scale-map - if passed in, this is a map of #{::features ::label} to a scaling operation:
        (-> (ct/clone v)
            (ops/- (:per-elem-subtract scale-entry))
            (ops// (:per-elem-div scale-entry))
@@ -375,13 +375,13 @@ If label range is not provided then labels are left unscaled."
   "
   [feature-keys label-keys options dataset]
   (let [first-item (first dataset)]
-    (if (and (contains? first-item :values)
-             (contains? first-item :label)
-             (contains? options :dataset-info))
+    (if (and (contains? first-item ::features)
+             (contains? first-item ::label)
+             (contains? options ::dataset-info))
       ;;This has already been coalesced
       (do
-        (when-not (and (= [:values] (normalize-keys feature-keys))
-                       (or (= [:label] (normalize-keys label-keys))
+        (when-not (and (= [::features] (normalize-keys feature-keys))
+                       (or (= [::label] (normalize-keys label-keys))
                            (= nil label-keys)))
           (throw (ex-info "Dataset appears coalesced but new keys appear to be added"
                           {:feature-keys feature-keys
@@ -439,15 +439,15 @@ If label range is not provided then labels are left unscaled."
             coalesced-dataset (coalesce-dataset feature-keys label-keys
                                                 options dataset)
             options (merge options
-                           {:dataset-info (merge {:value-ecount (->> feature-keys
+                           {::dataset-info (merge {::value-ecount (->> feature-keys
                                                                      (map key-ecount-map)
                                                                      (apply +))
-                                                  :key-ecount-map key-ecount-map}
-                                                 (when (and (= 1 (count label-keys))
-                                                            (get label-map (first label-keys)))
-                                                   {:num-classes (count (get label-map (first label-keys)))}))
-                            :feature-keys feature-keys
-                            :label-keys label-keys})]
+                                                   ::key-ecount-map key-ecount-map}
+                                                  (when (and (= 1 (count label-keys))
+                                                             (get label-map (first label-keys)))
+                                                    {::num-classes (count (get label-map (first label-keys)))}))
+                            ::feature-keys feature-keys
+                            ::label-keys label-keys})]
         (cond
           (:range-map options)
           (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
