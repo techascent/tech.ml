@@ -4,9 +4,7 @@
             [tech.ml.dataset :as ml-dataset]
             [tech.ml.loss :as loss]
             [tech.xgboost]
-            [tech.smile]))
-
-
+            [tech.smile.classification]))
 
 
 (defn gridsearch-the-things
@@ -33,7 +31,8 @@
                                     (->> (ml/gridsearch [[system-name gs-options]]
                                                         :features :label loss/classification-loss train-ds
                                                         :k-fold 3
-                                                        :range-map {::ml-dataset/features [-1 1]})
+                                                        :range-map {::ml-dataset/features [-1 1]}
+                                                        :gridsearch-depth 100)
                                          (map #(merge (dissoc base-dataset :test-ds :train-ds)
                                                       %))))))
                         (sort-by :error)
