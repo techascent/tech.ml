@@ -37,7 +37,7 @@
                                         (dataset/->train-test-split {}))
         model (ml/train system-name fruit-feature-keys fruit-label
                         (merge {:model-type :classification
-                                :range-map {:values [-1 1]}}
+                                :range-map {::dataset/features [-1 1]}}
                                options)
                         train-ds)
         test-output (ml/predict model test-ds)
@@ -59,7 +59,7 @@
                               loss/classification-loss (fruit-dataset)
                               ;;Small k-fold because tiny dataset
                               :k-fold 3
-                              :range-map {:values [-1 1]})]
+                              :range-map {::dataset/features [-1 1]})]
     (is (< (double (:error (first retval)))
            (double (or (:classification-loss options)
                        0.1))))

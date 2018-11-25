@@ -99,16 +99,20 @@ first try."
                         (take gridsearch-depth)
                         (map (fn [gs-opt] [system-name (merge options gs-opt)])))))
          (parallel/queued-pmap
-          0
+          parallelism
           (fn [sys-op-pair]
-            {:system (first sys-op-pair)
-             :options (second sys-op-pair)
-             :error (train/average-prediction-error
-                     (partial train-fn sys-op-pair)
-                     predict-fn
-                     ds-entry->predict-fn
-                     loss-fn
-                     dataset-seq)}))
+            (try
+              {:system (first sys-op-pair)
+               :options (second sys-op-pair)
+               :error (train/average-prediction-error
+                       (partial train-fn sys-op-pair)
+                       predict-fn
+                       ds-entry->predict-fn
+                       loss-fn
+                       dataset-seq)}
+              (catch Throwable e
+                nil))))
+         (remove nil?)
          ;;Partition to keep sorting down a bit.
          (partition-all top-n)
          (reduce (fn [best-items next-group]

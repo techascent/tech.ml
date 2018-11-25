@@ -40,7 +40,8 @@
          test-dataset :test-ds} (datasets)
         test-labels (map :y test-dataset)
         model (ml/train system-name [:x] :y {:model-type :regression
-                                             :range-map [-1 1]} train-dataset)
+                                             :range-map {:dataset/features [-1 1]}}
+                        train-dataset)
         test-output (ml/predict model test-dataset)
         mse (loss/mse test-output test-labels)]
     (is (< mse 0.01))))
