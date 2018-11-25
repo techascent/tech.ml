@@ -6,7 +6,7 @@
   [options label-keys]
   (let [label-keys (dataset/normalize-keys label-keys)]
     (when-not (= 1 (count label-keys))
-      (throw (ex-info "More than 1 label detected"
+      (throw (ex-info (format "More than 1 label detected: %s" label-keys)
                       {:label-keys label-keys
                        :options options})))
     (if-let [retval (get-in options [:label-map (first label-keys)])]

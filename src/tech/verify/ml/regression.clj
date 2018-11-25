@@ -76,7 +76,7 @@
                               :scalar-labels? true
                               :gridsearch-depth (or (get options :gridsearch-depth)
                                                     100)
-                              :range-map {:values [-1 1]})]
+                              :range-map {::dataset/features [-1 1]})]
     (is (< (double (:error (first retval)))
            (double (or (:mse-loss options)
                        0.2))))

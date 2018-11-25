@@ -71,13 +71,13 @@ first try."
                             (->> coalesced-dataset
                                  (map (fn [ds-entry]
                                         (update ds-entry
-                                                :label #(dtype/get-value % 0)))))
+                                                ::dataset/label #(dtype/get-value % 0)))))
                             coalesced-dataset)
         dataset-seq (if k-fold
                       (dataset/->k-fold-datasets k-fold options coalesced-dataset)
                       [coalesced-dataset])
         train-fn (fn [[system-name options-map] dataset]
-                   (train system-name :values :label options-map dataset))
+                   (train system-name ::dataset/features ::dataset/label options-map dataset))
         predict-fn predict
         ;;Becase we are working with a
         ds-entry->predict-fn (if-let [label-map
@@ -86,11 +86,11 @@ first try."
                                                                label-keys))])]
                                ;;classification
                                (let [val->label (c-set/map-invert label-map)]
-                                 (fn [{:keys [label]}]
+                                 (fn [{:keys [::dataset/label]}]
                                    (get val->label (-> (dtype/get-value label 0)
                                                        long))))
                                (do
-                                 (fn [{:keys [label]}]
+                                 (fn [{:keys [::dataset/label]}]
                                    (dtype/get-value label 0))))]
     (->> system-name->options-seq
          ;;Build master set of gridsearch pairs
