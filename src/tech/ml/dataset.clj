@@ -439,7 +439,7 @@ If label range is not provided then labels are left unscaled."
             coalesced-dataset (coalesce-dataset feature-keys label-keys
                                                 options dataset)
             options (merge options
-                           {::dataset-info (merge {::value-ecount (->> feature-keys
+                           {::dataset-info (merge {::feature-ecount (->> feature-keys
                                                                      (map key-ecount-map)
                                                                      (apply +))
                                                    ::key-ecount-map key-ecount-map}

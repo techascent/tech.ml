@@ -132,7 +132,7 @@
                                              :mandarin 2 :orange 3}}
                     :deterministic-label-map? true
                     :multiclass-label-base-index 1
-                    ::dataset/dataset-info {::dataset/value-ecount 4
+                    ::dataset/dataset-info {::dataset/feature-ecount 4
                                             ::dataset/num-classes 4
                                             ::dataset/key-ecount-map
                                             {:color-score 1 :height 1 :mass 1
@@ -185,7 +185,7 @@
                             :orange 3 :lemon 4}}
               :deterministic-label-map? true
               :multiclass-label-base-index 1
-              ::dataset/dataset-info {::dataset/value-ecount 5
+              ::dataset/dataset-info {::dataset/feature-ecount 5
                                       ::dataset/num-classes 4
                                       ::dataset/key-ecount-map {:color-score 1
                                                                 :height 1
