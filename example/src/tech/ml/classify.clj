@@ -20,6 +20,10 @@
                        :model-type :knn}
                       {:system-name :smile/classification
                        :model-type :ada-boost}
+                      {:system-name :smile/classification
+                       :model-type :logistic-regression}
+                      {:system-name :smile/classification
+                       :model-type :regularized-discriminant-analysis}
                       {:system-name :libsvm
                        :model-type :classification}]]
     (->> (datasets/all-datasets)
@@ -59,3 +63,11 @@
                                 (map (fn [model-result]
                                        (update model-result
                                                :options select-keys [:system-name :model-type]))))}))))
+
+
+(defn doit
+  []
+  (let [results (gridsearch-the-things)
+        summary (large-gridsearch-summary results)]
+    (io/put-nippy! "file://results.nippy" results)
+    summary))
