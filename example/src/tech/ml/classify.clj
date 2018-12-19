@@ -22,8 +22,6 @@
                        :model-type :ada-boost}
                       {:system-name :smile/classification
                        :model-type :logistic-regression}
-                      {:system-name :smile/classification
-                       :model-type :regularized-discriminant-analysis}
                       {:system-name :libsvm
                        :model-type :classification}]]
     (->> (datasets/all-datasets)
@@ -35,7 +33,6 @@
                                        (concat test-ds train-ds)
                                        train-ds)
                                      shuffle
-                                     (take 2000)
                                      vec)]
                    (->> base-systems
                         (mapcat (fn [{:keys [system-name] :as opts}]
@@ -44,7 +41,12 @@
                                                      (:model-type opts)))
                                     (->> (ml/gridsearch [[system-name gs-options]]
                                                         :features :label loss/classification-loss train-ds
-                                                        :k-fold 3
+                                                        :k-fold (if (> (count train-ds 200)
+                                                                       5
+                                                                       3))
+                                                        ;;Ensure all features are in range -1 to 1.  This is done
+                                                        ;;before k-folding so we do get the entire range of the
+                                                        ;;dataset.
                                                         :range-map {::ml-dataset/features [-1 1]}
                                                         :gridsearch-depth 75)
                                          (map #(merge (dissoc base-dataset :test-ds :train-ds)
