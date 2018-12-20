@@ -104,25 +104,24 @@ first try."
           parallelism
           (fn [sys-op-pair]
             (try
-              (let [start-time (System/nanoTime)
-                    pred-data (train/average-prediction-error
+              (let [pred-data (train/average-prediction-error
                                (partial train-fn sys-op-pair)
                                predict-fn
                                ds-entry->predict-fn
                                loss-fn
-                               dataset-seq)
-                    stop-time (System/nanoTime)]
-                (merge
-                 {:system (first sys-op-pair)
-                  :options (second sys-op-pair)}
-                 error))
-              (catch Throwable e
+                               dataset-seq)]
+                (merge pred-data
+                       {:system (first sys-op-pair)
+                        :options (second sys-op-pair)
+                        :k-fold k-fold
+                        }))
+              (catch Throwable e (println e)
                 nil))))
          (remove nil?)
          ;;Partition to keep sorting down a bit.
          (partition-all top-n)
          (reduce (fn [best-items next-group]
                    (->> (concat best-items next-group)
-                        (sort-by :error)
+                        (sort-by :average-loss)
                         (take top-n)))
                  []))))

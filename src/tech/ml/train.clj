@@ -27,24 +27,24 @@
   [train-fn predict-fn ds-entry->label-fn loss-fn dataset-seq]
   (let [train-predict-data
         (->> (dataset-seq->dataset-model-seq train-fn dataset-seq)
-             (map (fn [{:keys [test-ds model]}]
+             (map (fn [{:keys [test-ds model train-time] }]
                     (let [{predictions :retval
                            predict-time :milliseconds}
                           (utils/time-section (predict-fn model test-ds))
                           labels (map ds-entry->label-fn test-ds)]
-                      (assoc model
-                             {:predict-time predict-time
-                              :loss (loss-fn predictions labels)})))))
+                      {:predict-time predict-time
+                       :loss (loss-fn predictions labels)
+                       :model model
+                       :train-time train-time}))))
         ds-count (count dataset-seq)
         ave-fn #(* (/ 1.0 ds-count) %)
         total-seq #(apply + %)
         total-loss (total-seq (map :loss train-predict-data))
-        total-train (total-seq (map :predict-time train-predict-data))
-        total-predict (total-seq (map :train-time train-predict-data))]
-    (merge train-predict-data
-           {:average-loss (ave-fn total-loss)
-            :train-time total-train
-            :predict-time total-predict})))
+        total-predict (total-seq (map :predict-time train-predict-data))
+        total-train (total-seq (map :train-time train-predict-data))]
+    {:average-loss (ave-fn total-loss)
+     :train-time total-train
+     :predict-time total-predict}))
 
 
 (defn- expand-parameter-sequence

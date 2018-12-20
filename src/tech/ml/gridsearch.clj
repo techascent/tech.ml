@@ -89,7 +89,7 @@
         dynamic-values (filterv (comp fn? second) path-val-seq)
         num-dynamic-values (count dynamic-values)]
     (if (= 0 num-dynamic-values)
-      (path-item-seq->map constant-values)
+      [(path-item-seq->map constant-values)]
       (->> (sobol-seq num-dynamic-values gridsearch-start-index)
            (map (fn [^doubles sobol-data]
                   (->> (concat constant-values

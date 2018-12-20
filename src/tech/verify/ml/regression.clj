@@ -60,7 +60,8 @@
         mse (->> train-dataset
                  (dataset/->k-fold-datasets 10 {})
                  (train/average-prediction-error train-fn predict-fn
-                                                 label loss/mse))]
+                                                 label loss/mse)
+                 :average-loss)]
     (is (< mse 0.01))))
 
 
@@ -78,7 +79,7 @@
                               :gridsearch-depth (or (get options :gridsearch-depth)
                                                     100)
                               :range-map {::dataset/features [-1 1]})]
-    (is (< (double (:error (first retval)))
+    (is (< (double (:average-loss (first retval)))
            (double (or (:mse-loss options)
                        0.2))))
     retval))

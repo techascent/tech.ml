@@ -25,4 +25,9 @@
         predict-fn (fn [model dataset]
                      (repeat (count dataset)
                              (:c model)))
-        loss-fn loss/mse]))
+        loss-fn loss/mse
+        dataset-seq (->> (range 4)
+                         (mapv (comp #(hash-map :train-ds (repeat 4 %)
+                                                :test-ds (repeat 4 %))
+                                     (partial hash-map :c))))]
+    (train/average-prediction-error train-fn predict-fn :c loss-fn dataset-seq)))

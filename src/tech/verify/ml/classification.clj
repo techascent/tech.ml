@@ -60,7 +60,7 @@
                               ;;Small k-fold because tiny dataset
                               :k-fold 3
                               :range-map {::dataset/features [-1 1]})]
-    (is (< (double (:error (first retval)))
+    (is (< (double (:average-loss (first retval)))
            (double (or (:classification-loss options)
                        0.1))))
     retval))
