@@ -71,13 +71,15 @@ first try."
                             (->> coalesced-dataset
                                  (map (fn [ds-entry]
                                         (update ds-entry
-                                                ::dataset/label #(dtype/get-value % 0)))))
+                                                ::dataset/label
+                                                #(dtype/get-value % 0)))))
                             coalesced-dataset)
         dataset-seq (if k-fold
                       (dataset/->k-fold-datasets k-fold options coalesced-dataset)
                       [coalesced-dataset])
         train-fn (fn [[system-name options-map] dataset]
-                   (train system-name ::dataset/features ::dataset/label options-map dataset))
+                   (train system-name ::dataset/features ::dataset/label
+                          options-map dataset))
         predict-fn predict
         ;;Becase we are working with a
         ds-entry->predict-fn (if-let [label-map
@@ -102,14 +104,18 @@ first try."
           parallelism
           (fn [sys-op-pair]
             (try
-              {:system (first sys-op-pair)
-               :options (second sys-op-pair)
-               :error (train/average-prediction-error
-                       (partial train-fn sys-op-pair)
-                       predict-fn
-                       ds-entry->predict-fn
-                       loss-fn
-                       dataset-seq)}
+              (let [start-time (System/nanoTime)
+                    pred-data (train/average-prediction-error
+                               (partial train-fn sys-op-pair)
+                               predict-fn
+                               ds-entry->predict-fn
+                               loss-fn
+                               dataset-seq)
+                    stop-time (System/nanoTime)]
+                (merge
+                 {:system (first sys-op-pair)
+                  :options (second sys-op-pair)}
+                 error))
               (catch Throwable e
                 nil))))
          (remove nil?)

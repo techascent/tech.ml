@@ -1,7 +1,8 @@
 (ns tech.ml.train
   (:require [tech.ml.dataset :as dataset]
             [tech.parallel :as parallel]
-            [tech.datatype :as dtype]))
+            [tech.datatype :as dtype]
+            [tech.ml.utils :as utils]))
 
 
 (defn dataset-seq->dataset-model-seq
@@ -12,22 +13,38 @@
   [train-fn dataset-seq]
   (->> dataset-seq
        (map (fn [{:keys [train-ds] :as item}]
-              (-> (dissoc item :train-ds)
-                  (assoc :model (train-fn train-ds)))))))
+              (let [{model :retval
+                     train-time :milliseconds}
+                    (utils/time-section (train-fn train-ds))]
+                (-> (dissoc item :train-ds)
+                    (assoc :model model
+                           :train-time train-time)))))))
 
 
 (defn average-prediction-error
   "Average prediction error across models generated with these datasets
   Page 242, https://web.stanford.edu/~hastie/ElemStatLearn/"
   [train-fn predict-fn ds-entry->label-fn loss-fn dataset-seq]
-  (->> (dataset-seq->dataset-model-seq train-fn dataset-seq)
-       (map (fn [{:keys [test-ds model]}]
-              (let [predictions (predict-fn model test-ds)
-                    labels (->> test-ds
-                                (map ds-entry->label-fn))]
-                (loss-fn predictions labels))))
-       (apply +)
-       (* (/ 1.0 (count dataset-seq)))))
+  (let [train-predict-data
+        (->> (dataset-seq->dataset-model-seq train-fn dataset-seq)
+             (map (fn [{:keys [test-ds model]}]
+                    (let [{predictions :retval
+                           predict-time :milliseconds}
+                          (utils/time-section (predict-fn model test-ds))
+                          labels (map ds-entry->label-fn test-ds)]
+                      (assoc model
+                             {:predict-time predict-time
+                              :loss (loss-fn predictions labels)})))))
+        ds-count (count dataset-seq)
+        ave-fn #(* (/ 1.0 ds-count) %)
+        total-seq #(apply + %)
+        total-loss (total-seq (map :loss train-predict-data))
+        total-train (total-seq (map :predict-time train-predict-data))
+        total-predict (total-seq (map :train-time train-predict-data))]
+    (merge train-predict-data
+           {:average-loss (ave-fn total-loss)
+            :train-time total-train
+            :predict-time total-predict})))
 
 
 (defn- expand-parameter-sequence
