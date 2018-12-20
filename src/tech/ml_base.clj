@@ -115,7 +115,7 @@ first try."
                         :options (second sys-op-pair)
                         :k-fold k-fold
                         }))
-              (catch Throwable e (println e)
+              (catch Throwable e
                 nil))))
          (remove nil?)
          ;;Partition to keep sorting down a bit.
