@@ -42,10 +42,11 @@
                         train-ds)
         test-output (ml/predict model test-ds)
         labels (map fruit-label test-ds)]
-    (is (< (or (:classification-accuracy
+    ;;Accuracy gets *better* as it increases.  This is the opposite of a loss!!
+    (is (> (loss/classification-accuracy test-output labels)
+           (or (:classification-accuracy
                 options)
-               0.7)
-           (loss/classification-accuracy test-output labels)))))
+               0.7)))))
 
 
 (defn auto-gridsearch-fruit
@@ -60,7 +61,7 @@
                               ;;Small k-fold because tiny dataset
                               :k-fold 3
                               :range-map {::dataset/features [-1 1]})]
-    (is (< (double (:error (first retval)))
+    (is (< (double (:average-loss (first retval)))
            (double (or (:classification-loss options)
                        0.1))))
     retval))
