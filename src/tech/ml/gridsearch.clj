@@ -39,10 +39,26 @@
                       #(Math/exp (double %))))
 
 
+(defn exp-long
+  "Exponential exploration of the space."
+  [item-range]
+  (make-gridsearch-fn (mapv #(Math/log (double %)) item-range)
+                      #(-> (double %)
+                           Math/exp
+                           Math/round
+                           long)))
+
+
 (defn linear
   "Linear search through the area."
   [item-range]
   (make-gridsearch-fn item-range identity))
+
+
+(defn linear-long
+  "Linear search through the area."
+  [item-range]
+  (make-gridsearch-fn item-range long))
 
 
 (defn nominative
