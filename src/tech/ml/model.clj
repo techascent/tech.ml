@@ -9,6 +9,13 @@
             InputStream OutputStream]))
 
 
+(defn options->model-type
+  [{:keys [model-type]}]
+  (-> model-type
+      name
+      keyword))
+
+
 ;;This uses java serialization which is fragile between jar versions For Smile, you have
 ;;no choice for for a lot of toolkits you have the option to use the toolkit's save to
 ;;file methods which tend to be more robust.

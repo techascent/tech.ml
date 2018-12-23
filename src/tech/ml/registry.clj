@@ -6,10 +6,13 @@
 
 (defn system
   [system-name]
-  (if-let [retval (get @*registered-systems* system-name)]
-    retval
-    (throw (ex-info (format "Failed to find system.  Perhaps a require is missing?" )
-                    {:system-name system-name}))))
+  (let [system-name (if-let [ns-name (namespace system-name)]
+                      (keyword ns-name)
+                      system-name)]
+    (if-let [retval (get @*registered-systems* system-name)]
+      retval
+      (throw (ex-info (format "Failed to find system.  Perhaps a require is missing?" )
+                      {:system-name system-name})))))
 
 
 (defn register-system

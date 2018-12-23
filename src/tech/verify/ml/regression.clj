@@ -21,13 +21,12 @@
 
 
 (defn basic-regression
-  [system-name & {:keys [model-type accuracy]
-                  :or {model-type :regression
-                       accuracy 0.01}}]
+  [{:keys [model-type accuracy]
+    :or {accuracy 0.01} :as options}]
   (let [{train-dataset :train-ds
          test-dataset :test-ds} (datasets)
         test-labels (map :y test-dataset)
-        model (ml/train system-name [:x] :y
+        model (ml/train options [:x] :y
                         {:model-type (or model-type :regression)} train-dataset)
         test-output (ml/predict model test-dataset)
         mse (loss/mse test-output test-labels)]
@@ -35,11 +34,11 @@
 
 
 (defn scaled-features
-  [system-name]
+  [options]
   (let [{train-dataset :train-ds
          test-dataset :test-ds} (datasets)
         test-labels (map :y test-dataset)
-        model (ml/train system-name [:x] :y {:model-type :regression
+        model (ml/train options [:x] :y {:model-type :regression
                                              :range-map {:dataset/features [-1 1]}}
                         train-dataset)
         test-output (ml/predict model test-dataset)
@@ -49,12 +48,12 @@
 
 
 (defn k-fold-regression
-  [system-name]
+  [options]
   (let [{train-dataset :train-ds
          test-dataset :test-ds} (datasets)
         feature-keys [:x]
         label :y
-        train-fn (partial ml/train system-name feature-keys label
+        train-fn (partial ml/train options feature-keys label
                           {:model-type :regression})
         predict-fn ml/predict
         mse (->> train-dataset
@@ -66,13 +65,10 @@
 
 
 (defn auto-gridsearch-simple
-  [system-name options]
+  [options]
   ;;Pre-scale the dataset.
-  (let [gs-options (ml/auto-gridsearch-options
-                    system-name
-                    (merge {:model-type :regression}
-                           options))
-        retval (ml/gridsearch [[system-name gs-options]]
+  (let [gs-options (ml/auto-gridsearch-options options)
+        retval (ml/gridsearch gs-options
                               [:x] :y
                               loss/mse (:train-ds (datasets))
                               :scalar-labels? true

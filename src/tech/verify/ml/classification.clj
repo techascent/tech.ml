@@ -32,13 +32,12 @@
 
 
 (defn classify-fruit
-  [system-name options]
+  [options]
   (let [{:keys [train-ds test-ds]} (->> (fruit-dataset)
                                         (dataset/->train-test-split {}))
-        model (ml/train system-name fruit-feature-keys fruit-label
-                        (merge {:model-type :classification
-                                :range-map {::dataset/features [-1 1]}}
+        model (ml/train (merge :range-map {::dataset/features [-1 1]}
                                options)
+                        fruit-feature-keys fruit-label
                         train-ds)
         test-output (ml/predict model test-ds)
         labels (map fruit-label test-ds)]
@@ -50,12 +49,9 @@
 
 
 (defn auto-gridsearch-fruit
-  [system-name options]
-  (let [gs-options (ml/auto-gridsearch-options
-                    system-name
-                    (merge {:model-type :classification}
-                           options))
-        retval (ml/gridsearch [[system-name gs-options]]
+  [options]
+  (let [gs-options (ml/auto-gridsearch-options options)
+        retval (ml/gridsearch gs-options
                               fruit-feature-keys fruit-label
                               loss/classification-loss (fruit-dataset)
                               ;;Small k-fold because tiny dataset

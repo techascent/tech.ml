@@ -18,8 +18,7 @@
               (map #(dissoc % :train-time))))))
 
 
-(defn ave-pred-error
-  []
+(deftest ave-pred-error
   (let [train-fn #(merge {:a 1 :b 2}
                          (first %))
         predict-fn (fn [model dataset]

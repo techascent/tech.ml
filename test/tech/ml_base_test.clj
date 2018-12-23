@@ -36,10 +36,9 @@
                             {:a 1 :b idx :c 4})))
         feature-keys [:a :b]
         label-keys :c
-        system-name->opt-seq [[:test-system {:a-opt 1 :b-opt 2}]
-                              [:test-system {:a-opt 2 :b-opt 3}]] ]
-
-    (is (= (list {:average-loss 0.0,
+        opt-seq [{:model-type :test-system/test :a-opt 1 :b-opt 2}
+                 {:model-type :test-system/test :a-opt 2 :b-opt 3}]]
+        (is (= (list {:average-loss 0.0,
                   :k-fold 5,
                   :options {:a-opt 1,
                             :b-opt 2,
@@ -48,8 +47,8 @@
                                                                                             :b 1,
                                                                                             :c 1}},
                             :tech.ml.dataset/feature-keys [:a :b],
-                            :tech.ml.dataset/label-keys [:c]},
-                  :system :test-system,}
+                            :tech.ml.dataset/label-keys [:c]
+                            :model-type :test-system/test}}
                  {:average-loss 0.0,
                   :k-fold 5,
                   :options {:a-opt 2,
@@ -59,7 +58,7 @@
                                                                                             :b 1,
                                                                                             :c 1}},
                             :tech.ml.dataset/feature-keys [:a :b],
-                            :tech.ml.dataset/label-keys [:c]},
-                  :system :test-system})
-           (->> (ml-base/gridsearch system-name->opt-seq feature-keys label-keys loss/mse dataset)
+                            :tech.ml.dataset/label-keys [:c]
+                            :model-type :test-system/test}})
+           (->> (ml-base/gridsearch opt-seq feature-keys label-keys loss/mse dataset)
                 (map #(dissoc % :train-time :predict-time)))))))

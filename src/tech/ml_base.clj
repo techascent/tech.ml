@@ -11,14 +11,13 @@
 
 
 (defn train
-  [system-name feature-keys label-keys options dataset]
-  (let [ml-system (registry/system system-name)
+  [options feature-keys label-keys dataset]
+  (let [ml-system (registry/system (:model-type options))
         options (merge options (protocols/coalesce-options ml-system options))
         {:keys [coalesced-dataset options]}
         (dataset/apply-dataset-options feature-keys label-keys options dataset)
         model (protocols/train ml-system options coalesced-dataset)]
-    {:system system-name
-     :model model
+    {:model model
      :options options
      :feature-keys feature-keys
      :label-keys label-keys
@@ -27,7 +26,7 @@
 
 (defn predict
   [model dataset]
-  (let [ml-system (registry/system (:system model))
+  (let [ml-system (registry/system (get-in model [:options :model-type]))
         trained-model (:model model)
         {:keys [coalesced-dataset]} (dataset/apply-dataset-options
                                      (:feature-keys model) nil (:options model) dataset)]
@@ -38,8 +37,8 @@
 
 
 (defn auto-gridsearch-options
-  [system-name options]
-  (let [ml-system (registry/system system-name)]
+  [options]
+  (let [ml-system (registry/system (namespace (:model-type options)))]
     (merge options
            (protocols/gridsearch-options ml-system options))))
 
@@ -50,7 +49,7 @@
 We are breaking out of 'simple' and into 'easy' here, this is pretty
 opinionated.  The point is to make 80% of the cases work great on the
 first try."
-  [system-name->options-seq feature-keys label-keys
+  [options-seq feature-keys label-keys
    loss-fn dataset
    & {:keys [parallelism top-n gridsearch-depth k-fold
              scalar-labels?]
@@ -77,9 +76,7 @@ first try."
         dataset-seq (if k-fold
                       (dataset/->k-fold-datasets k-fold options coalesced-dataset)
                       [coalesced-dataset])
-        train-fn (fn [[system-name options-map] dataset]
-                   (train system-name ::dataset/features ::dataset/label
-                          options-map dataset))
+        train-fn #(train %1 ::dataset/features ::dataset/label %2)
         predict-fn predict
         ;;Becase we are working with a
         ds-entry->predict-fn (if-let [label-map
@@ -94,28 +91,27 @@ first try."
                                (do
                                  (fn [{:keys [::dataset/label]}]
                                    (dtype/get-value label 0))))]
-    (->> system-name->options-seq
+    (->> options-seq
          ;;Build master set of gridsearch pairs
-         (mapcat (fn [[system-name options-map]]
+         (mapcat (fn [options-map]
                    (->> (ml-gs/gridsearch options-map)
                         (take gridsearch-depth)
-                        (map (fn [gs-opt] [system-name (merge options gs-opt)])))))
+                        (map (fn [gs-opt] (merge options gs-opt))))))
          (parallel/queued-pmap
-          parallelism
-          (fn [sys-op-pair]
+          0
+          (fn [options-map]
             (try
               (let [pred-data (train/average-prediction-error
-                               (partial train-fn sys-op-pair)
+                               (partial train-fn options-map)
                                predict-fn
                                ds-entry->predict-fn
                                loss-fn
                                dataset-seq)]
                 (merge pred-data
-                       {:system (first sys-op-pair)
-                        :options (second sys-op-pair)
+                       {:options options-map
                         :k-fold k-fold
                         }))
-              (catch Throwable e
+              (catch Throwable e (println e)
                 nil))))
          (remove nil?)
          ;;Partition to keep sorting down a bit.
