@@ -4,6 +4,5 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.9.0"]
-                 [techascent/tech.xgboost "3.4"]
-                 [techascent/tech.smile "2.3"]
-                 [techascent/tech.svm "1.2"]])
+                 [techascent/tech.xgboost "4.0"]
+                 [techascent/tech.smile "3.0"]])
