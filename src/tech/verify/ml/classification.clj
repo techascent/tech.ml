@@ -35,7 +35,7 @@
   [options]
   (let [{:keys [train-ds test-ds]} (->> (fruit-dataset)
                                         (dataset/->train-test-split {}))
-        model (ml/train (merge :range-map {::dataset/features [-1 1]}
+        model (ml/train (merge {:range-map {::dataset/features [-1 1]}}
                                options)
                         fruit-feature-keys fruit-label
                         train-ds)
@@ -51,7 +51,7 @@
 (defn auto-gridsearch-fruit
   [options]
   (let [gs-options (ml/auto-gridsearch-options options)
-        retval (ml/gridsearch gs-options
+        retval (ml/gridsearch [gs-options]
                               fruit-feature-keys fruit-label
                               loss/classification-loss (fruit-dataset)
                               ;;Small k-fold because tiny dataset
@@ -59,5 +59,5 @@
                               :range-map {::dataset/features [-1 1]})]
     (is (< (double (:average-loss (first retval)))
            (double (or (:classification-loss options)
-                       0.1))))
+                       0.2))))
     retval))

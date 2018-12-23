@@ -38,9 +38,15 @@
 
 (defn auto-gridsearch-options
   [options]
-  (let [ml-system (registry/system (namespace (:model-type options)))]
+  (let [ml-system (registry/system (:model-type options))]
     (merge options
            (protocols/gridsearch-options ml-system options))))
+
+
+;;The gridsearch error reporter is called when there is an error during gridsearch.
+;;It is called like so:
+;;(*gridsearch-error-reporter options-map error)
+(def ^:dynamic *gridsearch-error-reporter* nil)
 
 
 (defn gridsearch
@@ -98,7 +104,7 @@ first try."
                         (take gridsearch-depth)
                         (map (fn [gs-opt] (merge options gs-opt))))))
          (parallel/queued-pmap
-          0
+          parallelism
           (fn [options-map]
             (try
               (let [pred-data (train/average-prediction-error
@@ -111,7 +117,9 @@ first try."
                        {:options options-map
                         :k-fold k-fold
                         }))
-              (catch Throwable e (println e)
+              (catch Throwable e
+                (when *gridsearch-error-reporter*
+                  (*gridsearch-error-reporter* options-map e))
                 nil))))
          (remove nil?)
          ;;Partition to keep sorting down a bit.

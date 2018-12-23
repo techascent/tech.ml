@@ -26,8 +26,7 @@
   (let [{train-dataset :train-ds
          test-dataset :test-ds} (datasets)
         test-labels (map :y test-dataset)
-        model (ml/train options [:x] :y
-                        {:model-type (or model-type :regression)} train-dataset)
+        model (ml/train options [:x] :y train-dataset)
         test-output (ml/predict model test-dataset)
         mse (loss/mse test-output test-labels)]
     (is (< mse (double accuracy)))))
@@ -38,8 +37,9 @@
   (let [{train-dataset :train-ds
          test-dataset :test-ds} (datasets)
         test-labels (map :y test-dataset)
-        model (ml/train options [:x] :y {:model-type :regression
-                                             :range-map {:dataset/features [-1 1]}}
+        model (ml/train (merge {:range-map {::dataset/features [-1 1]}}
+                               options)
+                        [:x] :y
                         train-dataset)
         test-output (ml/predict model test-dataset)
         mse (loss/mse test-output test-labels)]
@@ -53,8 +53,7 @@
          test-dataset :test-ds} (datasets)
         feature-keys [:x]
         label :y
-        train-fn (partial ml/train options feature-keys label
-                          {:model-type :regression})
+        train-fn (partial ml/train options feature-keys label)
         predict-fn ml/predict
         mse (->> train-dataset
                  (dataset/->k-fold-datasets 10 {})
@@ -68,7 +67,7 @@
   [options]
   ;;Pre-scale the dataset.
   (let [gs-options (ml/auto-gridsearch-options options)
-        retval (ml/gridsearch gs-options
+        retval (ml/gridsearch [gs-options]
                               [:x] :y
                               loss/mse (:train-ds (datasets))
                               :scalar-labels? true
