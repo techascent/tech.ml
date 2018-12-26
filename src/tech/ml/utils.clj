@@ -19,3 +19,12 @@
      {:retval retval#
       :milliseconds (-> (- stop-time# start-time#)
                         nanos->millis)}))
+
+
+(defn prefix-merge
+  [prefix src-map merge-map]
+  (merge src-map
+         (->> merge-map
+              (map (fn [[item-k item-v]]
+                     [(keyword (str prefix "-" (name item-k))) item-v]))
+              (into {}))))

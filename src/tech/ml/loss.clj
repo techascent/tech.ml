@@ -14,6 +14,13 @@
         n))))
 
 
+(defn rmse
+  "root mean squared error"
+  ^double [predictions labels]
+  (-> (mse predictions labels)
+      (Math/sqrt)))
+
+
 (defn classification-accuracy
   "correct/total.
 Model output is a sequence of probability distributions.

@@ -15,7 +15,9 @@
             [tech.parallel :as parallel]
             [tech.compute.cpu.tensor-math :as cpu-tm]
             [tech.compute.tensor :as ct]
-            [tech.compute.tensor.operations :as ops])
+            [tech.compute.tensor.operations :as ops]
+            [clojure.core.matrix.stats :as m-stats]
+            [tech.ml.utils :as utils])
   (:import [java.util Iterator NoSuchElementException]))
 
 
@@ -202,6 +204,7 @@ options are:
             ;;again
             (let [entry-data (dataset-entry->data all-keys dataset-entry
                                                   (dissoc options :label-map))
+
                   feature-data (take n-features entry-data)
                   label-data (seq (drop n-features entry-data))
                   feature-container (container-fn datatype value-ecount
@@ -213,22 +216,28 @@ options are:
               ;;memory.  That being said, there may be information on the dataset
               ;;entry that is useful to recreate sample so we are conservatively
               ;;keeping anything we didn't convert.
-              (merge (if keep-extra?
-                       (apply dissoc dataset-entry all-keys)
-                       {})
-                     {::features (first (dtype/copy-raw->item!
-                                      feature-data feature-container 0
-                                      container-fn-options))}
-                     (when label-keys
-                       {::label (if label-container
-                                 (first (dtype/copy-raw->item!
-                                         label-data label-container 0
-                                         container-fn-options))
-                                 (if unchecked?
-                                   (let [label-val (-> (flatten label-data)
-                                                       first)]
-                                     (dtype/unchecked-cast label-val datatype)
-                                     (dtype/cast label-val datatype))))}))))))))
+              (try
+                (merge (if keep-extra?
+                         (apply dissoc dataset-entry all-keys)
+                         {})
+                       {::features (first (dtype/copy-raw->item!
+                                           feature-data feature-container 0
+                                           container-fn-options))}
+                       (when label-keys
+                         {::label (if label-container
+                                    (first (dtype/copy-raw->item!
+                                            label-data label-container 0
+                                            container-fn-options))
+                                    (if unchecked?
+                                      (let [label-val (-> (flatten label-data)
+                                                          first)]
+                                        (dtype/unchecked-cast label-val datatype)
+                                        (dtype/cast label-val datatype))))}))
+                ;;certain classes of errors are caught here.
+                (catch Throwable e
+                  (throw (ex-info "Failed to convert entry"
+                                  {:error e
+                                   :entry dataset-entry}))))))))))
 
 
 (defn sequence->iterator
@@ -439,13 +448,15 @@ If label range is not provided then labels are left unscaled."
             coalesced-dataset (coalesce-dataset feature-keys label-keys
                                                 options dataset)
             options (merge options
-                           {::dataset-info (merge {::feature-ecount (->> feature-keys
-                                                                     (map key-ecount-map)
-                                                                     (apply +))
-                                                   ::key-ecount-map key-ecount-map}
-                                                  (when (and (= 1 (count label-keys))
-                                                             (get label-map (first label-keys)))
-                                                    {::num-classes (count (get label-map (first label-keys)))}))
+                           {::dataset-info
+                            (merge {::feature-ecount (->> feature-keys
+                                                          (map key-ecount-map)
+                                                          (apply +))
+                                    ::key-ecount-map key-ecount-map}
+                                   (when (and (= 1 (count label-keys))
+                                              (get label-map (first label-keys)))
+                                     {::num-classes (count (get label-map
+                                                                (first label-keys)))}))
                             ::feature-keys feature-keys
                             ::label-keys label-keys})]
         (cond
@@ -465,3 +476,89 @@ If label range is not provided then labels are left unscaled."
           :else
           {:coalesced-dataset coalesced-dataset
            :options options})))))
+
+
+(defn check-dataset-datatypes
+  "Check that the datatype of the rest of the dataset matches
+  the datatypes of the first entry."
+  [dataset]
+  (let [ds-types (->> (first dataset)
+                      (map (fn [[k v]]
+                             [k (number? v)]))
+                      (into {}))]
+    (->> dataset
+         (mapcat (fn [ds-entry]
+                   (->> ds-entry
+                        (remove (fn [[dk dv]]
+                                  (if (ds-types dk)
+                                    (number? dv)
+                                    (not (number? dv)))))
+                        seq)))
+         (remove nil?)
+         set)))
+
+
+(defn force-keyword
+  "Force a value to a keyword.  Often times data is backwards where normative
+  values are represented by numbers; this removes important information from
+  a dataset.  If a particular column is categorical, it should be represented
+  by a keyword."
+  [value & {:keys [missing-value-placeholder]
+            :or {missing-value-placeholder -1}}]
+  (cond
+    (number? value)
+    (if (= value missing-value-placeholder)
+      :unknown
+      (keyword (str (long value))))
+    (string? value)
+    (keyword value)
+    :else
+    value))
+
+
+(defn calculate-nominal-stats
+  "Calculate the mean, variance of each value of each nominal-type feature
+  as it relates to the regressed value.  This is useful to provide a simple
+  number of derived features that directly relate to regressed values and
+  that often provide better learning."
+  [nominal-feature-keywords label-keyword dataset]
+  (let [label-seq (map #(get % label-keyword) dataset)
+        keyword-stats
+        (->> nominal-feature-keywords
+             (pmap
+              (fn [kwd]
+                [kwd (->> dataset
+                          (group-by kwd)
+                          (map (fn [[item-key item-val-seq]]
+                                 [item-key
+                                  {:mean (m-stats/mean (map label-keyword
+                                                            item-val-seq))
+                                   :variance (if (> (count item-val-seq)
+                                                    1)
+                                               (m-stats/variance (map label-keyword
+                                                                      item-val-seq))
+                                               0)}]))
+                          (into {}))]))
+             (into {}))]
+    (assoc keyword-stats
+           label-keyword {:mean (m-stats/mean label-seq)
+                          :variance (m-stats/variance label-seq)})))
+
+
+(defn augment-dataset-with-stats
+  [stats-map nominal-feature-keywords label-keyword dataset]
+  (->>
+   dataset
+   (map (fn [ds-entry]
+          (reduce
+           (fn [ds-entry feature-key]
+             (let [key-mean (keyword (str (name feature-key) "mean"))
+                   key-var (keyword (str (name feature-key) "variance"))]
+               (if-let [stats-entry (get-in stats-map
+                                            [feature-key
+                                             (get ds-entry feature-key)])]
+                 (utils/prefix-merge (name feature-key) ds-entry stats-entry)
+                 (utils/prefix-merge (name feature-key) ds-entry
+                                     (get stats-map label-keyword)))))
+           ds-entry
+           nominal-feature-keywords)))))
