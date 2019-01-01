@@ -1,11 +1,8 @@
 (defproject techascent/tech.ml-base "3.3-SNAPSHOT"
   :description "Base concepts of the techascent ml suite"
-  :url "http://github.com/tech-ascent/tech.ml-base"
+  :url "http://github.com/techascent/tech.ml-base"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.9.0"]
-                 [techascent/tech.compute "3.1"]
-                 [techascent/tech.io "2.2"]
-                 [camel-snake-kebab "0.4.0"]
-                 [org.apache.commons/commons-math3 "3.6.1"]
-                 [org.clojure/data.csv "0.1.4"]])
+  :plugins [[lein-tools-deps "0.4.1"]]
+  :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
+  :lein-tools-deps/config {:config-files [:install :user :project]})
