@@ -9,7 +9,7 @@ Library to encapsulate a few core concepts of techascent system.
 
 ### Datasets Are Sequences Of Maps
 
-We have found that for most problems, including computer vision, a sequence of maps is a great abstraction for a datasets.
+We have found that for most problems, including computer vision, a sequence of maps is a great abstraction for a dataset:
 ```clojure
 ;; This is a dataset
 (def test-ds [{:a 1 :b 2} {:a 3 :b 4}])
