@@ -135,7 +135,7 @@ user> (loss/classification-accuracy predictions labels)
 0.7222222222222222
 ```
 
-Note that because everything is specific completely in the output of train, you don't need to
+Note that because everything is specified completely in the output of train, you don't need to
 know anything extra to predict.  The keys used to train, any dataset normalization procedures,
 all of this is stored in the map returned by train.
 
