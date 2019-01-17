@@ -223,8 +223,9 @@ user> (ml/gridsearch [gs-options]
 ```
 
 Using the results of this, we get a sort list of the best models *without* the model.
-You can then use the options produced via gridsearching to train some number of this
-models using the options found via gridsearching on your entire dataset.
+You can then use the options produced via gridsearching to train some number of these
+models and then just take the best one or do an ensemble with ones that are uncorrelated
+across some dimensions you care about.
 
 We can also graph the relationship between various hyperparameters and the loss as well
 as between various model types and hyperparameters and the training or prediction times.
