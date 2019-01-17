@@ -159,7 +159,7 @@ user> (ml/auto-gridsearch-options options)
  :model-type :xgboost/classification,
  :scale-pos-weight #<Fn@6fa8b9b5 tech.ml.gridsearch/make_gridsearch_fn[fn]>,
  :subsample #<Fn@67cca108 tech.ml.gridsearch/make_gridsearch_fn[fn]>}
- ```clojure
+ ```
 
 We then just do k-fold across a range of options:
 
