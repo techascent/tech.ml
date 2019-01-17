@@ -100,7 +100,7 @@ user> (ml/train  {:model-type :xgboost/classification}
            :tech.ml.dataset/label-keys [:fruit-name]}}
            
 user> (def model *1)
-model
+#'user/model
 ```
 
 Predict logically takes the output of train and a sequence of data and does a prediction.
