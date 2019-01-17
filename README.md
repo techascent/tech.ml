@@ -32,7 +32,7 @@ will work out fine.
 ### ML Is Functional
 
 
-Train is a function that takes a map of options and a sequence of datasets and returns a new map.
+Train is a function that takes a map of options and a sequence of data and returns a new map.
 Nothing special about it aside from it figures out the subsystem from one of the keys in the
 map of options.
 
