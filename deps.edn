@@ -1,7 +1,7 @@
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.9.0"}
-        techascent/tech.compute {:mvn/version "3.2"}
-        techascent/tech.io {:mvn/version "2.7"}
+        techascent/tech.compute {:mvn/version "3.4"}
+        techascent/tech.io {:mvn/version "2.8"}
         camel-snake-kebab {:mvn/version "0.4.0"}
         org.apache.commons/commons-math3 {:mvn/version "3.6.1"}
         org.clojure/data.csv {:mvn/version "0.1.4"}}}
