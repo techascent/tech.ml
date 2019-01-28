@@ -352,6 +352,40 @@ If label range is not provided then labels are left unscaled."
                       (into {})))))))
 
 
+(defn post-process-coalesced-dataset
+  [options feature-keys key-ecount-map label-keys coalesced-dataset]
+  (let [label-map (:label-map options)
+        options (merge options
+                       {::dataset-info
+                        (merge {::feature-ecount (->> feature-keys
+                                                      (map key-ecount-map)
+                                                      (apply +))
+                                ::key-ecount-map key-ecount-map}
+                               (when (and (= 1 (count label-keys))
+                                          (get label-map (first label-keys)))
+                                 {::num-classes (count (get label-map
+                                                            (first label-keys)))}))
+                        ::feature-keys feature-keys
+                        ::label-keys label-keys})]
+    (cond
+      (:range-map options)
+      (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
+                                                       coalesced-dataset)
+            scale-map (min-max-map->scale-map min-max-map (:range-map options))]
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
+                             scale-map coalesced-dataset)
+         :options (-> (dissoc options :range-map)
+                      (assoc :scale-map scale-map))})
+      (:scale-map options)
+      (let [scale-map (:scale-map options)]
+        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
+                             scale-map coalesced-dataset)
+         :options options})
+      :else
+      {:coalesced-dataset coalesced-dataset
+       :options options})))
+
+
 (defn apply-dataset-options
   "Apply dataset options to dataset producing a coalesced dataset and a new options map.
   A coalesced dataset is a dataset where all the feature keys are coalesced into a
@@ -443,39 +477,11 @@ If label range is not provided then labels are left unscaled."
                 @label-atom))
             options (merge options
                            (when label-map
-                             {:label-map label-map}))
-
-            coalesced-dataset (coalesce-dataset feature-keys label-keys
-                                                options dataset)
-            options (merge options
-                           {::dataset-info
-                            (merge {::feature-ecount (->> feature-keys
-                                                          (map key-ecount-map)
-                                                          (apply +))
-                                    ::key-ecount-map key-ecount-map}
-                                   (when (and (= 1 (count label-keys))
-                                              (get label-map (first label-keys)))
-                                     {::num-classes (count (get label-map
-                                                                (first label-keys)))}))
-                            ::feature-keys feature-keys
-                            ::label-keys label-keys})]
-        (cond
-          (:range-map options)
-          (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
-                                                           coalesced-dataset)
-                scale-map (min-max-map->scale-map min-max-map (:range-map options))]
-            {:coalesced-dataset (per-parameter-scale-coalesced-dataset
-                                 scale-map coalesced-dataset)
-             :options (-> (dissoc options :range-map)
-                          (assoc :scale-map scale-map))})
-          (:scale-map options)
-          (let [scale-map (:scale-map options)]
-            {:coalesced-dataset (per-parameter-scale-coalesced-dataset
-                                 scale-map coalesced-dataset)
-             :options options})
-          :else
-          {:coalesced-dataset coalesced-dataset
-           :options options})))))
+                             {:label-map label-map}))]
+        (->> (coalesce-dataset feature-keys label-keys
+                               options dataset)
+             (post-process-coalesced-dataset
+              options feature-keys key-ecount-map label-keys))))))
 
 
 (defn check-dataset-datatypes
