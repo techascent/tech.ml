@@ -123,8 +123,7 @@ the correct type."))
            (map-indexed vector))))
 
   (supported-stats [dataset]
-    ;;The minimum required.
-    #{:mean :median :min :max :skew})
+    (col-proto/supported-stats (first (columns dataset))))
 
   (from-prototype [dataset table-name column-seq]
     (->GenericColumnarDataset table-name column-seq)))

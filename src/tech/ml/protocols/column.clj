@@ -1,8 +1,18 @@
 (ns tech.ml.protocols.column)
 
+(defprotocol PIsColumn
+  (is-column? [item]))
+
+
+(extend-protocol PIsColumn
+  Object
+  (is-column? [item] false))
+
 
 (defprotocol PColumn
   (column-name [col])
+  (supported-stats [col]
+    "List of available stats for the column")
   (metadata [col]
     "Return the metadata map for this column.
     Metadata must contain :name :type :size.  Categorical
@@ -29,4 +39,10 @@ which cannot be simply coerced to the datatype are an error.")
   (empty-column [col datatype elem-count column-name]
     "Return a new column of this supertype where all values are missing.")
   (new-column [col datatype elem-count-or-values column-name]
-    "Return a new column of this supertype with these values"))
+    "Return a new column of this supertype with these values")
+  (math-context [col]))
+
+
+(defprotocol PColumnMathContext
+  (unary-op [ctx op-arg op-kwd])
+  (binary-op [ctx op-args op-scalar-fn op-kwd]))
