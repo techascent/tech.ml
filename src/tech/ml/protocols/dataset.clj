@@ -64,7 +64,7 @@ the correct type."))
   (column [dataset column-name]
     (if-let [retval
              (->> columns
-                  (filter #(= column-name (col-proto/column-name columns)))
+                  (filter #(= column-name (col-proto/column-name %)))
                   first)]
       retval
       (throw (ex-info (format "Failed to find column: %s" column-name)
@@ -73,9 +73,16 @@ the correct type."))
   (columns [dataset] columns)
 
   (add-column [dataset col]
-    (->GenericColumnarDataset
-     table-name
-     (concat columns [columns])))
+    (let [existing-names (set (map col-proto/column-name columns))
+          new-col-name (col-proto/column-name col)]
+      (when-let [existing (existing-names new-col-name)]
+        (throw (ex-info (format "Column of same name (%s) already exists in columns"
+                                new-col-name)
+                        {:existing-columns existing-names
+                         :column-name new-col-name})))
+      (->GenericColumnarDataset
+       table-name
+       (concat columns [col]))))
 
   (remove-column [dataset col-name]
     (->GenericColumnarDataset table-name
@@ -90,7 +97,15 @@ the correct type."))
           ;;Mapv to force failures in this function.
           (mapv (fn [col]
                   (if (= col-name (col-proto/column-name col))
-                    (col-fn col)
+                    (if-let [new-col (col-fn col)]
+                      (do
+                        (when-not (satisfies? col-proto/PColumn new-col)
+                          (throw (ex-info (format "Column returned does not satisfy column protocols %s."
+                                                  (type new-col))
+                                          {})))
+                        new-col)
+                      (throw (ex-info (format "No column returned from column function %s."
+                                              col-fn) {})))
                     col))))))
 
   (select [dataset index-seq]
