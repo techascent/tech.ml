@@ -27,4 +27,6 @@ which cannot be simply coerced to the datatype are an error.")
   (select [col idx-seq]
     "Return a new column with the subset of indexes")
   (empty-column [col datatype elem-count column-name]
-    "Return a new column of this supertype where all values are missing."))
+    "Return a new column of this supertype where all values are missing.")
+  (new-column [col datatype elem-count-or-values column-name]
+    "Return a new column of this supertype with these values"))

@@ -18,8 +18,9 @@
   [op dataset column-name-seq op-args]
   (->> column-name-seq
        (map (fn [col-name]
-              [col-name
-               (build-etl-context op dataset col-name op-args)]))
+              (when-let [etl-ctx (build-etl-context op dataset col-name op-args)]
+                [col-name etl-ctx])))
+       (remove nil?)
        (into {})))
 
 
