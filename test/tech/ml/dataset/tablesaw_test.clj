@@ -181,7 +181,5 @@
                         train-ds)
         labels (dtype/->vector (ds-proto/column test-ds "SalePrice"))
         predictions (ml/predict model test-ds)
-        _ (println (take 20 labels)
-                   (take 20 predictions))
         loss-value (loss/rmse predictions labels)]
     (is (< loss-value 0.20))))
