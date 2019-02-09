@@ -1,0 +1,187 @@
+(ns tech.ml.dataset.tablesaw-test
+  (:require [tech.ml.dataset.tablesaw :as tablesaw]
+            [tech.datatype.tablesaw :as dtype-tbl]
+            [tech.ml.dataset.etl :as etl]
+            [tech.ml.dataset.etl.column-filters :as col-filters]
+            [tech.ml.protocols.dataset :as ds-proto]
+            [tech.ml.protocols.column :as col-proto]
+            [tech.ml.loss :as loss]
+            [tech.ml-base :as ml]
+            [tech.xgboost]
+            [tech.datatype :as dtype]
+            [clojure.core.matrix :as m]
+            [clojure.set :as c-set]
+            [clojure.test :refer :all]))
+
+
+(deftest tablesaw-col-subset-test
+  (let [test-col (tablesaw/->TablesawColumn
+                  (dtype-tbl/make-column :int32 (range 10)) {})
+        select-vec [3 5 7 3 2 1]
+        new-col (col-proto/select test-col select-vec)]
+    (is (= select-vec
+           (dtype/->vector new-col)))))
+
+
+(def basic-pipeline
+  '[[remove "Id"]
+    ;;Replace missing values or just empty csv values with NA
+    [replace-missing string? "NA"]
+    [replace-string string? "" "NA"]
+    [replace-missing numeric? 0]
+    [replace-missing boolean? false]
+    [->etl-datatype [or numeric? boolean?]]
+    [string->number "Utilities" [["NA" -1] "ELO" "NoSeWa" "NoSewr" "AllPub"]]
+    [string->number "LandSlope" ["Gtl" "Mod" "Sev" "NA"]]
+    [string->number ["ExterQual"
+                     "ExterCond"
+                     "BsmtQual"
+                     "BsmtCond"
+                     "HeatingQC"
+                     "KitchenQual"
+                     "FireplaceQu"
+                     "GarageQual"
+                     "GarageCond"
+                     "PoolQC"]   ["Ex" "Gd" "TA" "Fa" "Po" "NA"]]
+    [set-attribute ["MSSubClass" "OverallQual" "OverallCond"] :categorical? true]
+    [string->number "HasMasVnr" {"BrkCmn" 1
+                                 "BrkFace" 1
+                                 "CBlock" 1
+                                 "Stone" 1
+                                 "None" 0
+                                 "NA" -1}]
+    [string->number "BoughtOffPlan" {"Abnorml" 0
+                                     "Alloca" 0
+                                     "AdjLand" 0
+                                     "Family" 0
+                                     "Normal" 0
+                                     "Partial" 1
+                                     "NA" -1}]
+    ;;Auto convert the rest that are still string columns
+    [string->number string?]
+    [m= "SalePriceDup" (col "SalePrice")]
+    [m= "SalePrice" (log1p (col "SalePrice"))]])
+
+
+(deftest base-etl-test
+  (let [src-dataset (tablesaw/path->tablesaw-dataset "data/aimes-house-prices/train.csv")
+        ;;For inference, we won't have the target but we will have everything else.
+        inference-columns (c-set/difference
+                           (set (map col-proto/column-name
+                                     (ds-proto/columns src-dataset)))
+                           #{"SalePrice"})
+        inference-dataset (-> (ds-proto/select src-dataset
+                                               inference-columns
+                                               (range 10))
+                              (ds-proto/->flyweight :error-on-missing-values? false))
+        {:keys [dataset pipeline options]}
+        (-> src-dataset
+            (etl/apply-pipeline basic-pipeline
+                                {:target "SalePrice"}))
+        post-pipeline-columns (c-set/difference inference-columns #{"Id"})
+        sane-dataset-for-flyweight (ds-proto/select dataset post-pipeline-columns
+                                                    (range 10))
+        final-flyweight (-> sane-dataset-for-flyweight
+                            (ds-proto/->flyweight))]
+    (is (= [1460 81] (m/shape src-dataset)))
+    (is (= [1460 81] (m/shape dataset)))
+
+    (is (= 45
+           (count (col-filters/execute-column-filter dataset :categorical?))))
+    (is (= #{"MSSubClass" "OverallQual" "OverallCond"}
+           (c-set/intersection #{"MSSubClass" "OverallQual" "OverallCond"}
+                               (set (col-filters/execute-column-filter dataset :categorical?)))))
+    (is (= []
+           (vec (col-filters/execute-column-filter dataset :string?))))
+    (is (= ["SalePrice"]
+           (vec (col-filters/execute-column-filter dataset :target?))))
+    (is (= []
+           (vec (col-filters/execute-column-filter dataset [:not [:numeric?]]))))
+    (let [sale-price (ds-proto/column dataset "SalePriceDup")
+          sale-price-l1p (ds-proto/column dataset "SalePrice")
+          sp-stats (col-proto/stats sale-price [:mean :min :max])
+          sp1p-stats (col-proto/stats sale-price-l1p [:mean :min :max])]
+      (is (m/equals (mapv sp-stats [:mean :min :max])
+                    [180921.195890 34900 755000]
+                    0.01))
+      (is (m/equals (mapv sp1p-stats [:mean :min :max])
+                    [12.024 10.460 13.534]
+                    0.01)))
+
+    (is (= 10 (count inference-dataset)))
+    (is (= 10 (count final-flyweight)))
+
+    (let [exact-columns (tablesaw/map-seq->tablesaw-dataset
+                         inference-dataset
+                         :column-definitions (:dataset-column-metadata options))
+          ;;Just checking that this works at all..
+          autoscan-columns (tablesaw/map-seq->tablesaw-dataset inference-dataset)]
+
+      ;;And the definition of exact is...
+      (is (= (mapv :datatype (->> (:dataset-column-metadata options)
+                                  (sort-by :name)))
+             (->> (ds-proto/columns exact-columns)
+                  (map col-proto/metadata)
+                  (sort-by :name)
+                  (mapv :datatype))))
+      (let [inference-ds (-> (etl/apply-pipeline exact-columns pipeline
+                                                 (assoc options :inference? true))
+                             :dataset)]
+        ;;spot check a few of the items
+        (is (m/equals (dtype/->vector (ds-proto/column sane-dataset-for-flyweight "MSSubClass"))
+                      (dtype/->vector (ds-proto/column inference-ds "MSSubClass"))))
+        ;;did categoical values get encoded identically?
+        (is (m/equals (dtype/->vector (ds-proto/column sane-dataset-for-flyweight "OverallQual"))
+                      (dtype/->vector (ds-proto/column inference-ds "OverallQual"))))))))
+
+
+(defn train-test-split
+  [dataset & {:keys [train-fraction]
+              :or {train-fraction 0.7}}]
+  (let [[num-rows num-cols] (m/shape dataset)
+        num-rows (long num-rows)
+        index-seq (shuffle (range num-rows))
+        num-train (long (* num-rows train-fraction))
+        train-indexes (take num-train index-seq)
+        test-indexes (drop num-train index-seq)]
+    {:train-ds (ds-proto/select dataset :all train-indexes)
+     :test-ds (ds-proto/select dataset :all test-indexes)}))
+
+
+(deftest train-predict-test
+  (let [src-dataset (tablesaw/path->tablesaw-dataset
+                     "data/aimes-house-prices/train.csv")
+        {:keys [dataset pipeline options]}
+        (etl/apply-pipeline src-dataset basic-pipeline {:target "SalePrice"})
+        {:keys [train-ds test-ds]} (train-test-split dataset)
+        all-columns (set (map col-proto/column-name (ds-proto/columns dataset)))
+        label-keys #{"SalePrice"}
+        feature-keys (c-set/difference all-columns #{"SalePrice" "SalePriceDup"})
+        test-full-row-major (->> (ds-proto/->row-major dataset {:feature-keys feature-keys
+                                                                :label-keys label-keys}
+                                                       {:datatype :float32})
+                                 (take 10)
+                                 vec)
+
+        test-train-row-major (->> (ds-proto/->row-major train-ds {:feature-keys feature-keys
+                                                                  :label-keys label-keys}
+                                                        {:datatype :float32})
+                                  (take 10)
+                                  vec)
+
+        test-test-row-major (->> (ds-proto/->row-major train-ds {:feature-keys feature-keys
+                                                                 :label-keys label-keys}
+                                                       {:datatype :float32})
+                                 (take 10)
+                                 (vec))
+
+
+        model (ml/train {:model-type :xgboost/regression}
+                        feature-keys label-keys
+                        train-ds)
+        labels (dtype/->vector (ds-proto/column test-ds "SalePrice"))
+        predictions (ml/predict model test-ds)
+        _ (println (take 20 labels)
+                   (take 20 predictions))
+        loss-value (loss/rmse predictions labels)]
+    (is (< loss-value 0.20))))

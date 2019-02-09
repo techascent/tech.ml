@@ -1,7 +1,8 @@
 (ns tech.ml.protocols.dataset
   (:require [clojure.set :as c-set]
             [tech.ml.protocols.column :as col-proto]
-            [tech.datatype :as dtype]))
+            [tech.datatype :as dtype]
+            [clojure.core.matrix.protocols :as mp]))
 
 
 (defprotocol PColumnarDataset
@@ -102,6 +103,35 @@ the correct type."))
                  (into {}))))))))
 
 
+(defn ->row-major
+  "Given a dataset and a map if desired key names to sequences of columns,
+  produce a sequence of maps where each key name points to contiguous vector
+  composed of the column values concatenated."
+  [dataset key-colname-seq-map {:keys [datatype]
+                                :or {datatype :float64}}]
+  (let [key-val-seq (seq key-colname-seq-map)
+        all-col-names (mapcat second key-val-seq)
+        item-col-count-map (->> key-val-seq
+                                (map (fn [[item-k item-col-seq]]
+                                       (when (seq item-col-seq)
+                                         [item-k (count item-col-seq)])))
+                                (remove nil?)
+                                vec)]
+    (ds-map dataset
+            (fn [& column-values]
+              (->> item-col-count-map
+                   (reduce (fn [[flyweight column-values] [item-key item-count]]
+                             (let [contiguous-array (dtype/make-array-of-type datatype (take item-count column-values))]
+                               (when-not (= (dtype/ecount contiguous-array)
+                                            (long item-count))
+                                 (throw (ex-info "Failed to get correct number of items" {:item-key item-key})))
+                               [(assoc flyweight item-key contiguous-array)
+                                (drop item-count column-values)]))
+                           [{} column-values])
+                   first))
+            all-col-names)))
+
+
 (defrecord GenericColumnarDataset [table-name columns]
   PColumnarDataset
   (dataset-name [dataset] table-name)
@@ -186,7 +216,8 @@ the correct type."))
 
   (index-value-seq [dataset]
     (let [col-value-seq (->> columns
-                             (map (comp seq col-proto/column-values)))]
+                             (mapv (fn [col]
+                                     (col-proto/column-values col))))]
       (->> (apply map vector col-value-seq)
            (map-indexed vector))))
 
@@ -194,4 +225,22 @@ the correct type."))
     (col-proto/supported-stats (first columns)))
 
   (from-prototype [dataset table-name column-seq]
-    (->GenericColumnarDataset table-name column-seq)))
+    (->GenericColumnarDataset table-name column-seq))
+
+
+  mp/PDimensionInfo
+  (dimensionality [m] (count (mp/get-shape m)))
+  (get-shape [m]
+    [(if-let [first-col (first columns)]
+       (mp/element-count first-col)
+       0)
+     (count columns)])
+  (is-scalar? [m] false)
+  (is-vector? [m] true)
+  (dimension-count [m dimension-number]
+    (let [shape (mp/get-shape m)]
+      (if (<= (count shape) (long dimension-number))
+        (get shape dimension-number)
+        (throw (ex-info "Array does not have specific dimension"
+                        {:dimension-number dimension-number
+                         :shape shape}))))))

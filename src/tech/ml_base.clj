@@ -13,27 +13,22 @@
 (defn train
   [options feature-keys label-keys dataset]
   (let [ml-system (registry/system (:model-type options))
-        options (merge options (protocols/coalesce-options ml-system options))
-        {:keys [coalesced-dataset options]}
-        (dataset/apply-dataset-options feature-keys label-keys options dataset)
-        model (protocols/train ml-system options coalesced-dataset)]
+        options (assoc options
+                       :feature-keys feature-keys
+                       :label-keys label-keys)
+        model (protocols/train ml-system options dataset)]
     {:model model
      :options options
-     :feature-keys feature-keys
-     :label-keys label-keys
      :id (UUID/randomUUID)}))
 
 
 (defn predict
   [model dataset]
-  (let [ml-system (registry/system (get-in model [:options :model-type]))
-        trained-model (:model model)
-        {:keys [coalesced-dataset]} (dataset/apply-dataset-options
-                                     (:feature-keys model) nil (:options model) dataset)]
+  (let [ml-system (registry/system (get-in model [:options :model-type]))]
     (protocols/predict ml-system
                        (:options model)
                        (:model model)
-                       coalesced-dataset)))
+                       dataset)))
 
 
 (defn auto-gridsearch-options

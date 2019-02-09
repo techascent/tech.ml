@@ -1,5 +1,7 @@
 (ns tech.ml.details
-  (:require [tech.ml.dataset :as dataset]))
+  (:require [tech.ml.dataset :as dataset]
+            [tech.ml.protocols.dataset :as ds-proto]
+            [tech.ml.protocols.column :as col-proto]))
 
 
 (defn options->label-map
@@ -14,3 +16,15 @@
       (throw (ex-info "Failed to find label map"
                       {:label-keys label-keys
                        :label-maps (get options :label-map)})))))
+
+
+(defn get-target-label-map
+  [options]
+  (let [label-keys (:label-keys options)
+        _ (when-not (= 1 (count label-keys))
+            (throw (ex-info "Missing label keys" {})))]
+    (if-let [retval (get-in options [:column-metadata (first label-keys) :label-map])]
+      retval
+      (throw (ex-info (format "Failed to find label map for column %s"
+                              (first label-keys))
+                      {})))))
