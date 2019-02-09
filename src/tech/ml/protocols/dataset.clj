@@ -7,12 +7,19 @@
   (dataset-name [dataset])
   (column [dataset col-name])
   (columns [dataset])
-  (add-column [dataset column])
-  (remove-column [dataset col-name])
+  (add-column [dataset column]
+    "Error if columns exists")
+  (remove-column [dataset col-name]
+    "Failes quietly")
   (update-column [dataset col-name update-fn]
-    "Update a column returning a new dataset.  update-fn is a column->column transformation.")
-  (select [dataset index-seq]
-    "Reorder/trim dataset according to this sequence of indexes.  Returns a new dataset.")
+    "Update a column returning a new dataset.  update-fn is a column->column transformation.
+Error if column does not exist.")
+  (add-or-update-column [dataset column]
+    "If column exists, replace.  Else append new column.")
+  (select [dataset colname-seq index-seq]
+    "Reorder/trim dataset according to this sequence of indexes.  Returns a new dataset.
+colname-seq - either keyword :all or list of column names with no duplicates.
+index-seq - either keyword :all or list of indexes.  May contain duplicates.")
   (index-value-seq [dataset column-name-seq]
     "Get a sequence of tuples:
 [idx col-value-vec]
@@ -28,8 +35,7 @@ the correct type."))
 
 (defn select-columns
   [dataset col-name-seq]
-  (->> col-name-seq
-       (map (partial column dataset))))
+  (select dataset col-name-seq :all))
 
 
 (defn ds-filter
@@ -39,7 +45,7 @@ the correct type."))
        (filter (fn [[idx col-values]]
                  (apply predicate col-values)))
        (map first)
-       (select dataset)))
+       (select dataset :all)))
 
 
 (defn ds-group-by
@@ -48,7 +54,7 @@ the correct type."))
        (group-by (fn [[idx col-values]]
                    (apply key-fn col-values)))
        (map first)
-       (select dataset)))
+       (select dataset :all)))
 
 
 (defn ds-map
@@ -108,13 +114,40 @@ the correct type."))
                                               col-fn) {})))
                     col))))))
 
-  (select [dataset index-seq]
-    (let [idx-ary (int-array index-seq)]
+  (add-or-update-column [ctx column]
+    (let [col-name (col-proto/column-name column)
+          found-name (->> (map col-proto/column-name columns)
+                          (filter #(= col-name %))
+                          first)]
+      (if found-name
+        (update-column ctx col-name (constantly column))
+        (add-column ctx column))))
+
+  (select [dataset column-name-seq index-seq]
+    (let [all-name-set (->> (map col-proto/column-name columns)
+                            set)
+          name-set (if (= :all column-name-seq)
+                     all-name-set
+                     (set column-name-seq))
+          _ (when-let [missing (seq (c-set/difference name-set all-name-set))]
+              (throw (ex-info (format "Invalid/missing column names: %s" missing)
+                              {:all-columns all-name-set
+                               :selection column-name-seq})))
+          _ (when-not (= (count name-set)
+                         (count column-name-seq))
+              (throw (ex-info "Duplicate column names detected" {:selection column-name-seq})))
+          indexes (if (= :all index-seq)
+                    nil
+                    (int-array index-seq))]
       (->GenericColumnarDataset
        table-name
-       (->> columns
-            (mapv (fn [col]
-                    (col-proto/select col idx-ary)))))))
+       (->> column-name-seq
+            (map (fn [col-name]
+                   (let [col (column dataset col-name)]
+                     (if indexes
+                       (col-proto/select col indexes)
+                       col))))
+            vec))))
 
   (index-value-seq [dataset column-name-seq]
     (let [col-value-seq (->> (select-columns dataset column-name-seq)

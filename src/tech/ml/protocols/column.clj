@@ -11,6 +11,8 @@
 
 (defprotocol PColumn
   (column-name [col])
+  (set-name [col name]
+    "Return a new column.")
   (supported-stats [col]
     "List of available stats for the column")
   (metadata [col]
@@ -44,5 +46,5 @@ which cannot be simply coerced to the datatype are an error.")
 
 
 (defprotocol PColumnMathContext
-  (unary-op [ctx op-arg op-kwd])
-  (binary-op [ctx op-args op-scalar-fn op-kwd]))
+  (unary-op [ctx op-env op-arg op-kwd])
+  (binary-op [ctx op-env op-args op-scalar-fn op-kwd]))
