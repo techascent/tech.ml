@@ -32,7 +32,11 @@ form.  Guaranteed support across implementations for :mean :variance :median :sk
 Implementations should check their metadata before doing calculations.")
   (column-values [col]
     "Return a 'thing convertible to a sequence' of values for this column.
-May be a java array or something else.")
+May be a java array or something else.  Likely to error on missing.")
+  (is-missing? [col idx]
+    "Return true if this index is missing.")
+  (get-column-value [col idx]
+    "Get a value fro mthe column.  Error on missing values.")
   (set-values [col idx-val-seq]
     "Set values in the column returning a new column with same name and datatype.  Values
 which cannot be simply coerced to the datatype are an error.")

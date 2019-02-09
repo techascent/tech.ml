@@ -1,11 +1,13 @@
 (ns tech.ml.protocols.dataset
   (:require [clojure.set :as c-set]
-            [tech.ml.protocols.column :as col-proto]))
+            [tech.ml.protocols.column :as col-proto]
+            [tech.datatype :as dtype]))
 
 
 (defprotocol PColumnarDataset
   (dataset-name [dataset])
-  (column [dataset col-name])
+  (maybe-column [dataset column-name]
+    "Return either column if exists or nil.")
   (columns [dataset])
   (add-column [dataset column]
     "Error if columns exists")
@@ -20,10 +22,12 @@ Error if column does not exist.")
     "Reorder/trim dataset according to this sequence of indexes.  Returns a new dataset.
 colname-seq - either keyword :all or list of column names with no duplicates.
 index-seq - either keyword :all or list of indexes.  May contain duplicates.")
-  (index-value-seq [dataset column-name-seq]
+  (index-value-seq [dataset]
     "Get a sequence of tuples:
 [idx col-value-vec]
-values are in order of column-name-seq.  Duplicate names are allowed.")
+
+Values are in order of column-name-seq.  Duplicate names are allowed and result in
+duplicate values.")
   (supported-stats [dataset]
     "Return the set of natively supported stats for the dataset.  This must be at least
 #{:mean :variance :median :skew}.")
@@ -33,15 +37,24 @@ different table name and column sequence.  Take care that the columns are all of
 the correct type."))
 
 
+(defn column
+  "Return the column or throw if it doesn't exist."
+  [dataset column-name]
+  (if-let [retval (maybe-column dataset column-name)]
+    retval
+    (throw (ex-info (format "Failed to find column: %s" column-name)
+                    {:column-name column-name}))))
+
+
 (defn select-columns
   [dataset col-name-seq]
   (select dataset col-name-seq :all))
 
 
 (defn ds-filter
-  [dataset predicate column-name-seq]
+  [dataset predicate & [column-name-seq]]
   ;;interleave, partition count would also work.
-  (->> (index-value-seq dataset column-name-seq)
+  (->> (index-value-seq (select dataset (or column-name-seq :all) :all))
        (filter (fn [[idx col-values]]
                  (apply predicate col-values)))
        (map first)
@@ -49,8 +62,8 @@ the correct type."))
 
 
 (defn ds-group-by
-  [dataset key-fn column-name-seq]
-  (->> (index-value-seq dataset column-name-seq)
+  [dataset key-fn & [column-name-seq]]
+  (->> (index-value-seq (select dataset (or column-name-seq :all) :all))
        (group-by (fn [[idx col-values]]
                    (apply key-fn col-values)))
        (map first)
@@ -58,23 +71,44 @@ the correct type."))
 
 
 (defn ds-map
-  [dataset map-fn column-name-seq]
-  (->> (index-value-seq dataset column-name-seq)
+  [dataset map-fn & [column-name-seq]]
+  (->> (index-value-seq (select dataset (or column-name-seq :all) :all))
        (map (fn [[idx col-values]]
               (apply map-fn col-values)))))
+
+
+(defn ->flyweight
+  "Convert dataset to flyweight dataset.
+  Flag indicates "
+  [dataset & {:keys [column-name-seq
+                     error-on-missing-values?]
+              :or {column-name-seq :all
+                   error-on-missing-values? true}}]
+  (let [dataset (select dataset column-name-seq :all)
+        column-name-seq (map col-proto/column-name (columns dataset))]
+    (if error-on-missing-values?
+      (ds-map dataset (fn [& args]
+                        (zipmap column-name-seq args)))
+      ;;Much slower algorithm
+      (if-let [ds-columns (seq (columns dataset))]
+        (let [ecount (long (apply min (map dtype/ecount ds-columns)))
+              columns (columns dataset)]
+          (for [idx (range ecount)]
+            (->> (for [col columns]
+                   [(col-proto/column-name col)
+                    (when-not (col-proto/is-missing? col idx)
+                      (col-proto/get-column-value col idx))])
+                 (remove nil?)
+                 (into {}))))))))
 
 
 (defrecord GenericColumnarDataset [table-name columns]
   PColumnarDataset
   (dataset-name [dataset] table-name)
-  (column [dataset column-name]
-    (if-let [retval
-             (->> columns
-                  (filter #(= column-name (col-proto/column-name %)))
-                  first)]
-      retval
-      (throw (ex-info (format "Failed to find column: %s" column-name)
-                      {:column-name column-name}))))
+  (maybe-column [dataset column-name]
+    (->> columns
+         (filter #(= column-name (col-proto/column-name %)))
+         first))
 
   (columns [dataset] columns)
 
@@ -124,11 +158,12 @@ the correct type."))
         (add-column ctx column))))
 
   (select [dataset column-name-seq index-seq]
-    (let [all-name-set (->> (map col-proto/column-name columns)
-                            set)
-          name-set (if (= :all column-name-seq)
-                     all-name-set
-                     (set column-name-seq))
+    (let [all-names (map col-proto/column-name columns)
+          all-name-set (set all-names)
+          column-name-seq (if (= :all column-name-seq)
+                            all-names
+                            column-name-seq)
+          name-set (set column-name-seq)
           _ (when-let [missing (seq (c-set/difference name-set all-name-set))]
               (throw (ex-info (format "Invalid/missing column names: %s" missing)
                               {:all-columns all-name-set
@@ -149,14 +184,14 @@ the correct type."))
                        col))))
             vec))))
 
-  (index-value-seq [dataset column-name-seq]
-    (let [col-value-seq (->> (select-columns dataset column-name-seq)
-                             (map col-proto/column-values))]
+  (index-value-seq [dataset]
+    (let [col-value-seq (->> columns
+                             (map (comp seq col-proto/column-values)))]
       (->> (apply map vector col-value-seq)
            (map-indexed vector))))
 
   (supported-stats [dataset]
-    (col-proto/supported-stats (first (columns dataset))))
+    (col-proto/supported-stats (first columns)))
 
   (from-prototype [dataset table-name column-seq]
     (->GenericColumnarDataset table-name column-seq)))
