@@ -7,7 +7,9 @@
             [tech.ml.dataset.etl.defaults :refer [etl-datatype]]
             [tech.ml.dataset.etl.math-ops :as math-ops])
   (:refer-clojure :exclude [remove])
-  (:import [tech.ml.protocols.etl PETLSingleColumnOperator]))
+  (:import [tech.ml.protocols.etl
+            PETLSingleColumnOperator
+            PETLMultipleColumnOperator]))
 
 
 (defonce ^:dynamic *etl-operator-registry* (atom {}))
@@ -28,8 +30,9 @@
 
 
 (defn apply-pipeline-operator
-  [{:keys [inference?] :as options} {:keys [pipeline dataset]} op]
-  (let [[op context] (if-not inference?
+  [{:keys [pipeline dataset options]} op]
+  (let [inference? (:inference? options)
+        [op context] (if-not inference?
                        [op {}]
                        [(:operation op) (:context op)])
         op-type (keyword (name (first op)))
@@ -37,13 +40,19 @@
         op-args (drop 2 op)
         col-seq (column-filters/select-columns dataset col-selector)
         op-impl (get-etl-operator op-type)
-        context (if-not inference?
-                  (etl-proto/build-etl-context-columns
-                   op-impl dataset col-seq op-args)
-                  context)
+        [context options] (if-not inference?
+                            (let [context
+                                  (etl-proto/build-etl-context-columns
+                                   op-impl dataset col-seq op-args)]
+                              [context (update options
+                                               :label-map
+                                               merge
+                                               (:label-map context))])
+                            [context options])
         dataset (etl-proto/perform-etl-columns
                  op-impl dataset col-seq op-args context)]
     {:dataset dataset
+     :options options
      :pipeline (conj pipeline {:operation (->> (concat [(first op) col-seq]
                                                        (drop 2 op))
                                                vec)
@@ -61,13 +70,14 @@
                                    ~op-code)))
        (defn ~op-symbol
          [dataset# col-selector# & op-args#]
-         (-> (apply-pipeline-operator {}
-                                      {:pipeline []
-                                       :dataset dataset#}
-                                      (-> (concat '[~op-symbol]
-                                                  [col-selector#]
-                                                  op-args#)
-                                          vec))
+         (-> (apply-pipeline-operator
+              {:pipeline []
+               :options {}
+               :dataset dataset#}
+              (-> (concat '[~op-symbol]
+                          [col-selector#]
+                          op-args#)
+                  vec))
              :dataset))))
 
 
@@ -124,32 +134,48 @@
          first)))
 
 
-(def-etl-operator
-  string->number
-  (if-let [table-vals (seq (first op-args))]
-    (make-string-table-from-args table-vals)
-    (make-string-table-from-args (ds-col/unique (ds/column
-                                                    dataset column-name))))
-  (ds/update-column
-   dataset column-name
-   (fn [col]
-     (let [existing-values (ds-col/column-values col)
-           str-table context
-           new-col-dtype (etl-datatype)
-           data-values (dtype/make-array-of-type
-                        new-col-dtype
-                        (->> existing-values
-                             (map (fn [item-val]
-                                    (if-let [lookup-val (get str-table item-val)]
-                                      lookup-val
-                                      (throw (ex-info (format "Failed to find lookup for value %s"
-                                                              item-val)
-                                                      {:item-value item-val
-                                                       :possible-values (set (keys str-table))}))))))
-                        {:unchecked? true})]
-       (-> (ds-col/new-column col new-col-dtype data-values column-name)
-           (ds-col/set-metadata (select-keys (ds-col/metadata col)
-                                                [:target? :categorical?])))))))
+
+(register-etl-operator!
+ :string->number
+ (reify PETLMultipleColumnOperator
+   (build-etl-context-columns [op dataset column-name-seq op-args]
+     ;;Label maps are special and used outside of this context do we have
+     ;;treat them separately
+     (let [provided-table (when-let [table-vals (seq (first op-args))]
+                            (make-string-table-from-args table-vals))]
+       {:label-map (->> column-name-seq
+                        (map (fn [column-name]
+                               [column-name (if provided-table
+                                              provided-table
+                                              (make-string-table-from-args (ds-col/unique
+                                                                            (ds/column
+                                                                             dataset column-name))))]))
+                        (into {}))}))
+
+   (perform-etl-columns [op dataset column-name-seq op-args context]
+     (->> column-name-seq
+          (reduce (fn [dataset column-name]
+                    (ds/update-column
+                     dataset column-name
+                     (fn [col]
+                       (let [existing-values (ds-col/column-values col)
+                             str-table (get-in context [:label-map column-name])
+                             new-col-dtype (etl-datatype)
+                             data-values (dtype/make-array-of-type
+                                          new-col-dtype
+                                          (->> existing-values
+                                               (map (fn [item-val]
+                                                      (if-let [lookup-val (get str-table item-val)]
+                                                        lookup-val
+                                                        (throw (ex-info (format "Failed to find lookup for value %s"
+                                                                                item-val)
+                                                                        {:item-value item-val
+                                                                         :possible-values (set (keys str-table))
+                                                                         :column-name column-name}))))))
+                                          {:unchecked? true})
+                             retval (ds-col/new-column col new-col-dtype data-values)]
+                         retval))))
+                  dataset)))))
 
 
 (def-etl-operator
@@ -165,9 +191,7 @@
                                                    (if (= str-value src-str)
                                                      replace-str
                                                      str-value)))))]
-       (-> (ds-col/new-column col :string data-values column-name)
-           (ds-col/set-metadata (select-keys (ds-col/metadata col)
-                                                [:target? :categorical?])))))))
+       (ds-col/new-column col :string data-values)))))
 
 
 (def-etl-operator
@@ -184,9 +208,7 @@
                           (if (= :boolean (dtype/get-datatype col))
                             (map #(if % 1 0) col-values)
                             col-values))]
-         (-> (ds-col/new-column col new-col-dtype data-values column-name)
-             (ds-col/set-metadata (select-keys (ds-col/metadata col)
-                                                  [:target? :categorical?]))))
+         (ds-col/new-column col new-col-dtype data-values))
        col))))
 
 
@@ -204,20 +226,57 @@
           expr-args (mapv (partial eval-expr env) (rest math-expr))
           {op-type :type
            operand :operand} (math-ops/get-operand (keyword (name fn-name)))]
-      (apply operand env expr-args))))
+      (apply operand env expr-args))
+    :else
+    (throw (ex-info (format "Malformed expression %s" math-expr) {}))))
+
+
+(defn finalize-math-result
+  [result dataset column-name]
+  (-> (if-let [src-col (ds/maybe-column dataset column-name)]
+        (ds-col/set-metadata result (dissoc (ds-col/metadata src-col)
+                                            :categorical?))
+        (ds-col/set-metadata result (dissoc (ds-col/metadata result)
+                                            :categorical?
+                                            :target?)))
+      (ds-col/set-name column-name)))
+
+
+(defn operator-eval-expr
+  [dataset column-name math-expr]
+  (ds/add-or-update-column
+   dataset
+   (-> (eval-expr {:dataset dataset
+                   :column-name column-name}
+                  math-expr)
+       (finalize-math-result dataset column-name))))
 
 
 (def-etl-operator
   m=
   nil
-  (let [result (eval-expr {:dataset dataset
-                           :column-name column-name}
-                          (first op-args))
-        src-col (ds/maybe-column dataset column-name)]
+  (operator-eval-expr dataset column-name (first op-args)))
 
-    (ds/add-or-update-column dataset (cond-> (ds-col/set-name result column-name)
-                                             src-col
-                                             ;;We can't set anything else as we don't know if the column is categorical
-                                             ;;or not  If it was the target, however, it still is.
-                                             (ds-col/set-metadata (select-keys (ds-col/metadata src-col)
-                                                                                  [:target?]))))))
+
+(def-etl-operator
+  range-scaler
+  (-> (ds/column dataset column-name)
+      (ds-col/stats [:min :max]))
+
+  (let [{column-min :min
+         column-max :max} context
+        column-min (double column-min)
+        column-max (double column-max)
+        column-range (- column-min column-max)
+        [range-min range-max] (if (seq op-args)
+                                (first op-args)
+                                [-1 1])
+        range-min (double range-min)
+        range-max (double range-max)
+        target-range (- range-max
+                        range-min)
+        range-multiplier (/ target-range
+                            column-range)]
+    (operator-eval-expr dataset column-name [:- [:* [:- [:col] column-min]
+                                                 range-multiplier]
+                                             range-min])))

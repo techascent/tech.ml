@@ -41,12 +41,18 @@
   (cond
     (string? col-selector)
     [col-selector]
+    (keyword? col-selector)
+    [col-selector]
     (sequential? col-selector)
     (if (string? (first col-selector))
       col-selector
       (execute-column-filter dataset col-selector))
+    (set? col-selector)
+    col-selector
     (symbol? col-selector)
-    (execute-column-filter dataset col-selector)))
+    (execute-column-filter dataset col-selector)
+    :else
+    (throw (ex-info (format "Unrecognized column selector %s" col-selector) {}))))
 
 
 (defn- process-filter-args

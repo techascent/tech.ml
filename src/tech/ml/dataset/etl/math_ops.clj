@@ -85,17 +85,13 @@
 
 
 (defn apply-binary-op
-  [op-kwd scalar-fn op-env & op-args]
-  (let [first-pair (take 2 op-args)
-        op-args (drop 2 op-args)
-        [first-arg second-arg] first-pair]
-    (when-not (= 2 (count first-pair))
-      (throw (ex-info "Binary operation has less that 2 operands" {})))
-    (if-let [any-tensors (->> op-args
-                               (filter ds-col/is-column?)
-                               seq)]
+  [op-kwd scalar-fn op-env first-arg second-arg & op-args]
+  (let [all-args (concat [first-arg second-arg] op-args)]
+    (if-let [any-tensors (->> all-args
+                              (filter ds-col/is-column?)
+                              seq)]
       (ds-col/binary-op (ds-col/math-context (first any-tensors))
-                           op-env op-args scalar-fn op-kwd)
+                        op-env all-args scalar-fn op-kwd)
       (apply scalar-fn op-args))))
 
 

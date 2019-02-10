@@ -34,17 +34,6 @@
   (Table/create (.name table) (into-array Column col-seq)))
 
 
-(defn ->nice-name
-  [item]
-  (cond
-    (keyword? item)
-    (name item)
-    (symbol? item)
-    (name item)
-    :else
-    (str item)))
-
-
 (defn- col-datatype-cast
   [data-val col-dtype]
   (if-let [dtype ((set primitive/datatypes) col-dtype)]
@@ -59,9 +48,9 @@
 
 (defn- column->metadata
   [^Column col]
-  {:name (.name col)}
-  (when (= :string (dtype/get-datatype col))
-    {:categorical? true}))
+  (merge {:name (.name col)}
+         (when (= :string (dtype/get-datatype col))
+           {:categorical? true})))
 
 
 (def available-stats
@@ -84,28 +73,32 @@
         :quartile-3]))
 
 
-(defrecord TablesawColumn [^Column col metadata]
+(declare make-column)
+
+
+(defrecord TablesawColumn [^Column col metadata cache]
   col-proto/PIsColumn
   (is-column? [this] true)
 
   col-proto/PColumn
-  (column-name [this] (.name col))
+  (column-name [this] (or (:name metadata) (.name col)))
   (set-name [this colname]
-    ;;Stupid way of doing it...but I don't have a better option at this point.
-    (-> (col-proto/new-column this
-                              (dtype/get-datatype this)
-                              (col-proto/column-values this)
-                              colname)))
+    (->TablesawColumn col (assoc metadata :name colname) {}))
 
   (supported-stats [col] available-stats)
 
   (metadata [this] (assoc metadata
+                          :name (col-proto/column-name this)
                           :size (mp/element-count col)
-                          :datatype (dtype/get-datatype col)
-                          :name (.name col)))
+                          :datatype (dtype/get-datatype col)))
 
   (set-metadata [this data-map]
-    (->TablesawColumn col data-map))
+    (->TablesawColumn col data-map cache))
+
+  (cache [this] cache)
+
+  (set-cache [this cache-map]
+    (->TablesawColumn col metadata cache-map))
 
   (missing [this]
     (-> (.isMissing ^Column col)
@@ -179,25 +172,38 @@
           col-dtype (dtype/get-datatype col)]
       (doseq [[idx col-val] idx-val-seq]
         (.set new-col (int idx) (col-datatype-cast col-val col-dtype)))
-      (->TablesawColumn new-col (select-keys metadata [:categorical? :target?]))))
+
+      (make-column new-col metadata {})))
 
   (select [this idx-seq]
     (let [^ints int-data (if (instance? (Class/forName "[I") idx-seq)
                            idx-seq
                            (int-array idx-seq))]
       ;;We can't cache much metadata now as we don't really know.
-      (->TablesawColumn (.subset col int-data) (select-keys  metadata [:categorical?
-                                                                       :target?]))))
+      (make-column (.subset col int-data) metadata {})))
 
-  (empty-column [this datatype elem-count column-name]
-    (->TablesawColumn
-     (dtype-tbl/make-empty-column datatype elem-count {:column-name column-name})
+  (empty-column [this datatype elem-count metadata]
+    (make-column
+     (dtype-tbl/make-empty-column datatype elem-count
+                                  {:column-name  (or (:name metadata)
+                                                     (col-proto/column-name this))})
+     metadata
      {}))
 
-  (new-column [this datatype elem-count-or-values column-name]
-    (->TablesawColumn
-     (dtype-tbl/make-column datatype elem-count-or-values {:column-name column-name})
+  (new-column [this datatype elem-count-or-values metadata]
+    (make-column
+     (dtype-tbl/make-column datatype elem-count-or-values
+                            {:column-name (or (:name metadata)
+                                              (col-proto/column-name this))})
+     metadata
      {}))
+
+  (clone [this]
+    (make-column
+     (dtype-tbl/make-column (dtype/get-datatype this) (col-proto/column-values this)
+                            {:column-name (col-proto/column-name this)})
+     metadata
+     cache))
 
   (math-context [this]
     (compute-math-context/->ComputeTensorMathContext))
@@ -220,9 +226,7 @@
 
   dtype-base/PPrototype
   (from-prototype [src datatype shape]
-    (->TablesawColumn
-     (dtype-base/from-prototype col datatype shape)
-     {}))
+    (col-proto/new-column src datatype (first shape) (select-keys [:name] metadata)))
 
   primitive/PToBuffer
   (->buffer-backing-store [item]
@@ -245,6 +249,11 @@
 (cpu-typed-buffer/generic-extend-java-type TablesawColumn)
 
 
+(defn make-column
+  [datatype-col metadata & [cache]]
+  (->TablesawColumn datatype-col metadata cache))
+
+
 
 (defn ^tech.tablesaw.io.csv.CsvReadOptions$Builder
   ->csv-builder [^String path & {:keys [separator header? date-format]}]
@@ -258,9 +267,16 @@
 
 (defn tablesaw-columns->tablesaw-dataset
   [table-name columns]
-  (columnar-dataset/->GenericColumnarDataset table-name
-                                             (->> columns
-                                                  (mapv #(->TablesawColumn % (column->metadata %))))))
+  (columnar-dataset/->GenericColumnarDataset
+   table-name
+   (if (or (sequential? columns)
+           (instance? java.util.List columns))
+     (->> columns
+          (mapv #(make-column % (column->metadata %))))
+     (->> columns
+          (mapv (fn [[col-name col]]
+                  (make-column col (assoc (column->metadata col)
+                                          :name col-name))))))))
 
 
 (defn ->tablesaw-dataset
@@ -292,8 +308,11 @@
                         (map (fn [{colname :name
                                    datatype :datatype
                                    :as coldef}]
-                               [colname
-                                (dtype-tbl/make-empty-column datatype 0 {:column-name (->nice-name colname)})]))
+                               (let [datatype (if (= datatype :keyword)
+                                                :string
+                                                datatype)]
+                                 [colname
+                                  (dtype-tbl/make-empty-column datatype 0 {:column-name colname})])))
                         (into {}))
         all-column-names (set (keys column-map))
         max-idx (reduce (fn [max-idx [idx item-row]]
@@ -317,4 +336,4 @@
       (let [missing-count (- max-ecount (.size col))]
         (dotimes [idx missing-count]
           (.appendMissing col))))
-    (tablesaw-columns->tablesaw-dataset table-name column-seq)))
+    (tablesaw-columns->tablesaw-dataset table-name column-map)))

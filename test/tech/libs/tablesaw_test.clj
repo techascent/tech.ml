@@ -11,11 +11,14 @@
             [tech.datatype :as dtype]
             [clojure.core.matrix :as m]
             [clojure.set :as c-set]
+            [clojure.java.io :as io]
+            [clojure.string :as s]
+            [camel-snake-kebab.core :refer [->kebab-case]]
             [clojure.test :refer :all]))
 
 
 (deftest tablesaw-col-subset-test
-  (let [test-col (tablesaw/->TablesawColumn
+  (let [test-col (tablesaw/make-column
                   (dtype-tbl/make-column :int32 (range 10)) {})
         select-vec [3 5 7 3 2 1]
         new-col (ds-col/select test-col select-vec)]
@@ -174,13 +177,63 @@
                                                        {:datatype :float32})
                                  (take 10)
                                  (vec))
-
-
         model (ml/train {:model-type :xgboost/regression}
                         feature-keys label-keys
                         train-ds)
         labels (dtype/->vector (ds/column test-ds "SalePrice"))
-        _ (println (keys model))
         predictions (ml/predict model test-ds)
         loss-value (loss/rmse predictions labels)]
     (is (< loss-value 0.20))))
+
+
+(def mapseq-fruit-dataset
+  (memoize
+   (fn []
+     (let [fruit-ds (slurp (io/resource "fruit_data_with_colors.txt"))
+           dataset (->> (s/split fruit-ds #"\n")
+                        (mapv #(s/split % #"\s+")))
+           ds-keys (->> (first dataset)
+                        (mapv (comp keyword ->kebab-case)))]
+       (->> (rest dataset)
+            (map (fn [ds-line]
+                   (->> ds-line
+                        (map (fn [ds-val]
+                               (try
+                                 (Double/parseDouble ^String ds-val)
+                                 (catch Throwable e
+                                   (-> (->kebab-case ds-val)
+                                       keyword)))))
+                        (zipmap ds-keys)))))))))
+
+
+;;A sequence of maps is actually hard because keywords aren't represented
+;;in tablesaw so we have to do a lot of work.  Classification also imposes
+;;the necessity of mapping back from the label column to a sequence of
+;;keyword labels.
+(deftest mapseq-classification-test
+  (let [pipeline '[[remove :fruit-subtype]
+                   [string->number string?]
+                   ;;Range numeric data to -1 1
+                   [range-scaler (not categorical?)]]
+        src-ds (ds/->dataset (mapseq-fruit-dataset))
+
+        {:keys [dataset pipeline options]}
+        (etl/apply-pipeline src-ds pipeline
+                            {:target :fruit-name})
+
+        origin-ds (mapseq-fruit-dataset)
+        src-keys (set (keys (first (mapseq-fruit-dataset))))
+        result-keys (set (->> (ds/columns dataset)
+                              (map ds-col/column-name)))]
+
+    ;;Kind of hard
+    (is (= (set (keys (first (mapseq-fruit-dataset))))
+           (set (->> (ds/columns src-ds)
+                     (map ds-col/column-name)))))
+
+    (is (= (c-set/difference src-keys #{:fruit-subtype})
+           result-keys))
+
+    ;;Really hard
+    (is (= (mapv (comp name :fruit-name) (mapseq-fruit-dataset))
+           (ds/labels dataset options)))))

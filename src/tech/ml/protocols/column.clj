@@ -22,6 +22,13 @@ columns must have :categorical? true and the inference target
 should have :target? true.")
   (set-metadata [col data-map]
     "Set the metadata on the column returning a new column.")
+
+  (cache [col]
+    "Return the cache map for this column.  Cache maps are
+never duplcated or copied.")
+  (set-cache [col data-map]
+    "Set the cache on the column returning a new column. Cache maps
+are never duplicated or copied.")
   (missing [col]
     "Indexes of missing values")
   (unique [col]
@@ -42,10 +49,12 @@ May be a java array or something else.  Likely to error on missing.")
 which cannot be simply coerced to the datatype are an error.")
   (select [col idx-seq]
     "Return a new column with the subset of indexes")
-  (empty-column [col datatype elem-count column-name]
+  (empty-column [col datatype elem-count metadata]
     "Return a new column of this supertype where all values are missing.")
-  (new-column [col datatype elem-count-or-values column-name]
+  (new-column [col datatype elem-count-or-values metadata]
     "Return a new column of this supertype with these values")
+  (clone [col]
+    "Return a clone of this column.")
   (math-context [col]))
 
 

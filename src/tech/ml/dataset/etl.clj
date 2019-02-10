@@ -3,7 +3,9 @@
             [tech.ml.protocols.column :as col-proto]
             [tech.ml.protocols.etl :as etl-proto]
             [tech.ml.dataset.etl.pipeline-operators :as pipeline-operators]
-            [tech.ml.dataset.etl.defaults :as defaults])
+            [tech.ml.dataset.etl.column-filters :as column-filters]
+            [tech.ml.dataset.etl.defaults :as defaults]
+            [clojure.set :as c-set])
   (:import [tech.ml.protocols.etl PETLSingleColumnOperator]))
 
 
@@ -23,8 +25,16 @@
                                       :dataset-column-metadata
                                       (mapv col-proto/metadata (ds-proto/columns dataset)))]
                               ;;No change for inference case
-                              [dataset options])]
-      (merge {:options options}
-             (->> pipeline
-                  (reduce (partial pipeline-operators/apply-pipeline-operator options)
-                          {:pipeline [] :dataset dataset}))))))
+                              [dataset options])
+          {:keys [options dataset] :as retval}
+          (->> pipeline
+               (reduce pipeline-operators/apply-pipeline-operator
+                       {:pipeline [] :options options :dataset dataset}))
+          target-columns (set (column-filters/execute-column-filter dataset :target?))
+          feature-columns (c-set/difference (set (map col-proto/column-name (ds-proto/columns dataset)))
+                                            (set target-columns))]
+
+      (assoc retval :options
+             (assoc options
+                    :feature-columns feature-columns
+                    :label-columns target-columns)))))

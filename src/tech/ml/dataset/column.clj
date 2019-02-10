@@ -34,9 +34,42 @@
 
 
 (defn set-metadata
-  "Set the metadata on the column returning a new column."
+  "Set the metadata on the column returning a new column.
+  Beware this could change the name."
   [col data-map]
   (col-proto/set-metadata col data-map))
+
+
+(defn merge-metadata
+  "Merge metadata in column with this map.
+  Beware this could change the name of the column."
+  [col data-map]
+  (->> (merge (metadata col)
+              data-map)
+       (set-metadata col)))
+
+
+(defn cache
+  "Return the cache map for this column.  Cache maps are
+never duplcated or copied."
+  [col]
+  (col-proto/cache col))
+
+
+(defn set-cache
+  "Set the cache on the column returning a new column. Cache maps
+are never duplicated or copied."
+  [col cache-map]
+  (col-proto/set-cache col cache-map))
+
+
+(defn merge-cache
+  "Merge the existing cache with new cache map.  Cache maps
+  are never duplicated or copied."
+  [col cache-map]
+  (->> (merge (cache col)
+              cache-map)
+       (set-cache col)))
 
 
 (defn missing
@@ -93,14 +126,22 @@ which cannot be simply coerced to the datatype are an error."
 
 (defn empty-column
   "Return a new column of this supertype where all values are missing."
-  [col datatype elem-count column-name]
-  (col-proto/empty-column col datatype elem-count column-name))
+  [col datatype elem-count & [metadata]]
+  (col-proto/empty-column col datatype elem-count
+                          (or metadata (col-proto/metadata col))))
 
 
 (defn new-column
   "Return a new column of this supertype with these values"
-  [col datatype elem-count-or-values column-name]
-  (col-proto/new-column col datatype elem-count-or-values column-name))
+  [col datatype elem-count-or-values & [metadata]]
+  (col-proto/new-column col datatype elem-count-or-values
+                        (or metadata (col-proto/metadata col))))
+
+
+(defn clone
+  "Clone this column not changing anything."
+  [col]
+  (col-proto/clone col))
 
 
 (defn math-context

@@ -236,13 +236,22 @@
     (into-array item-cls (map coerce-fn elem-count-or-seq))))
 
 
+(defn column-safe-name
+  ^String [item-name]
+  (if (and (or (keyword? item-name)
+               (symbol? item-name))
+           (namespace item-name))
+    (str (namespace item-name) "/" (name item-name))
+    (str item-name)))
+
+
 (defn make-column
   "Make a new tablesaw column.  Note that this does not make
   columns with missing values.  For that, use make-empty-column."
   ([datatype elem-count-or-seq {:keys [column-name]
                                 :or {column-name "_unnamed"}
                                 :as options}]
-   (let [^String column-name column-name]
+   (let [^String column-name (column-safe-name column-name)]
      ;;If numeric column, then use this pathway.
      (if ((set primitive/datatypes) datatype)
        (let [src-data (if (and (satisfies? base/PDatatype elem-count-or-seq)
@@ -270,7 +279,7 @@
 (defn make-empty-column
   ([datatype elem-count {:keys [column-name]
                          :or {column-name "_unnamed"}}]
-   (let [^String column-name (str column-name)
+   (let [^String column-name (column-safe-name column-name)
          elem-count (int elem-count)]
      (case datatype
        :int16 (ShortColumn/create column-name elem-count)

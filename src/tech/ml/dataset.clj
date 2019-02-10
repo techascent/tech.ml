@@ -231,6 +231,8 @@ the correct type."
   If label count is 1, then if there is a label-map associated with column
   generate sequence of labels."
   [dataset {:keys [label-columns label-map] :as options}]
+  (when-not label-columns
+    (throw (ex-info "No label columns indicated" {})))
   (if-let [label-column (when (= (count label-columns) 1)
                           (first label-columns))]
     (let [column-values (-> (column dataset label-column)
@@ -244,7 +246,7 @@ the correct type."
                          (throw (ex-info (format "Failed to find label for column value %s" col-val)
                                          {:inverse-label-map inverse-map})))))))
         column-values))
-    (->> (->row-major dataset {:labels label-columns})
+    (->> (->row-major dataset {:labels label-columns} options)
          (map :labels))))
 
 

@@ -42,7 +42,7 @@
                                       existing
 
                                       (keyword? row-val)
-                                      (assoc existing :datatype :string)
+                                      (assoc existing :datatype (or datatype :keyword))
 
                                       (string? row-val)
                                       (assoc existing :datatype :string)
@@ -92,4 +92,6 @@
                                       :else
                                       :float64))
                            :string :string
-                           :boolean :boolean))})))))))
+                           :boolean :boolean
+                           ;;Let other people sort it out.
+                           :keyword :keyword))})))))))
