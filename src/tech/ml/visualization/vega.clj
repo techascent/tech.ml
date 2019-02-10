@@ -1,7 +1,7 @@
-(ns tech.ml.vega
+(ns tech.ml.visualization.vega
   (:require [clojure.string :as s]
             [clojure.set :as c-set]
-            [tech.ml-base :as ml]))
+            [tech.ml :as ml]))
 
 
 (defn fixup-model-type

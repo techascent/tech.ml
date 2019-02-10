@@ -1,4 +1,4 @@
-(ns tech.compute.tablesaw
+(ns tech.libs.tablesaw.compute.tablesaw
   (:require [tech.compute.cpu.typed-buffer :as cpu-typed-buffer]
             ;;Have to have fastutil bound also
             [tech.compute.fastutil])

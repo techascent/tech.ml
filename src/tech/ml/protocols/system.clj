@@ -1,12 +1,8 @@
-(ns tech.ml.protocols)
+(ns tech.ml.protocols.system)
 
 
 (defprotocol PMLSystem
   (system-name [system])
-  (coalesce-options [system options]
-    "Force double or float arrays by setting coalesce options.
-See dataset/coalesce-dataset,
-dataset/apply-dataset-options")
   (gridsearch-options [system options]
     "Given an options map which must include at least model-type, return a new
 options map in the format that gridsearch requires.  Note these are general options,

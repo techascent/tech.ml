@@ -1,14 +1,13 @@
-(ns tech.xgboost
+(ns tech.libs.xgboost
   (:require [tech.datatype :as dtype]
             [tech.parallel :as parallel]
             [tech.ml.model :as model]
-            [tech.ml.protocols :as ml-proto]
+            [tech.ml.protocols.system :as ml-proto]
             [tech.ml.registry :as ml-registry]
-            [tech.ml.details :as ml-details]
-            [tech.ml-base :as ml]
+            [tech.ml :as ml]
+            [tech.ml.utils :as utils]
             [tech.ml.gridsearch :as ml-gs]
             [clojure.string :as s]
-            [tech.ml.protocols.dataset :as ds-proto]
             [tech.ml.dataset :as dataset])
   (:refer-clojure :exclude [load])
   (:import [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
@@ -139,15 +138,15 @@
   ^Iterator [dataset feature-keys label-keys & {:keys [weight group]
                                                 :or {weight 1.0
                                                      group -1}}]
-  (->> (ds-proto/->row-major dataset
-                             {:features feature-keys
-                              :label label-keys}
-                             {:datatype :float32})
+  (->> (dataset/->row-major dataset
+                            {:features feature-keys
+                             :label label-keys}
+                            {:datatype :float32})
        ;;dataset is now coalesced into float arrays for the values
        ;;and a single float for the label (if it exists).
        (map (fn [{:keys [:features :label]}]
               (LabeledPoint. (float (->data label 0.0)) nil ^floats features)))
-       (dataset/sequence->iterator)))
+       (utils/sequence->iterator)))
 
 
 (defn dataset->dmatrix
@@ -173,11 +172,6 @@
 (defrecord XGBoostSystem []
   ml-proto/PMLSystem
   (system-name [_] :xgboost)
-  (coalesce-options [_ _]
-    {:datatype :float32
-     :container-fn dtype/make-array-of-type
-     ;;Start the multiclass label from 0.
-     :multiclass-label-base-index 0})
   (gridsearch-options [system options]
     ;;These are just a very small set of possible options:
     ;;https://xgboost.readthedocs.io/en/latest/parameter.html
@@ -190,13 +184,13 @@
      :alpha (ml-gs/exp [0.0001 5])})
   (train [_ options dataset]
     (let [objective (get-objective options)
-          train-dmat (dataset->dmatrix dataset (:feature-keys options) (:label-keys options))
+          train-dmat (dataset->dmatrix dataset (:feature-columns options) (:label-columns options))
           watches (:watches options)
           round (or (:round options) 25)
           early-stopping-round (when (:early-stopping-round options)
                                  (int (:early-stopping-round options)))
           label-map (when (multiclass-objective? objective)
-                      (ml-details/get-target-label-map options))
+                      (dataset/label-inverse-map options))
           params (->> (-> (dissoc options :model-type :watches)
                           (assoc :objective objective))
                       ;;Adding in some defaults
@@ -228,10 +222,10 @@
 
   (predict [_ options model dataset]
     (let [model (XGBoost/loadModel (ByteArrayInputStream. model))
-          retval (->> (dataset->dmatrix dataset (:feature-keys options) nil)
+          retval (->> (dataset->dmatrix dataset (:feature-columns options) nil)
                       (.predict model))]
       (if (= "multi:softprob" (get-objective options))
-        (let [label-map (ml-details/get-target-label-map options)
+        (let [label-map (dataset/label-inverse-map options)
               ordered-labels (->> label-map
                                   (sort-by second)
                                   (mapv first))

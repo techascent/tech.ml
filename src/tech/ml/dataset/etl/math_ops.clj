@@ -1,7 +1,7 @@
 (ns tech.ml.dataset.etl.math-ops
   (:require [tech.ml.dataset.etl.defaults :refer [etl-datatype]]
-            [tech.ml.protocols.column :as col-proto]
-            [tech.ml.protocols.dataset :as ds-proto]))
+            [tech.ml.dataset.column :as ds-col]
+            [tech.ml.dataset :as ds]))
 
 
 (defonce ^:dynamic *etl-math-ops* (atom {}))
@@ -31,17 +31,17 @@
  :col :varargs (fn [{:keys [dataset column-name] :as env} & args]
                  (case (count args)
                    0
-                   (ds-proto/column dataset column-name)
+                   (ds/column dataset column-name)
                    1
-                   (ds-proto/column dataset (first args)))))
+                   (ds/column dataset (first args)))))
 
 
 
 (defn- apply-unary-op
   [op-kwd scalar-fn op-env op-arg]
   (cond
-    (col-proto/is-column? op-arg)
-    (col-proto/unary-op (col-proto/math-context op-arg) op-env op-arg op-kwd)
+    (ds-col/is-column? op-arg)
+    (ds-col/unary-op (ds-col/math-context op-arg) op-env op-arg op-kwd)
     (number? op-arg)
     (double (scalar-fn (double op-arg)))))
 
@@ -80,7 +80,7 @@
 
 (doseq [stats-entry potential-stats]
   (register-math-op! stats-entry :unary-column
-                     #(-> (col-proto/stats % #{stats-entry})
+                     #(-> (ds-col/stats % #{stats-entry})
                           :stats-entry)))
 
 
@@ -92,9 +92,9 @@
     (when-not (= 2 (count first-pair))
       (throw (ex-info "Binary operation has less that 2 operands" {})))
     (if-let [any-tensors (->> op-args
-                               (filter col-proto/is-column?)
+                               (filter ds-col/is-column?)
                                seq)]
-      (col-proto/binary-op (col-proto/math-context (first any-tensors))
+      (ds-col/binary-op (ds-col/math-context (first any-tensors))
                            op-env op-args scalar-fn op-kwd)
       (apply scalar-fn op-args))))
 

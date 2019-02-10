@@ -50,5 +50,9 @@ which cannot be simply coerced to the datatype are an error.")
 
 
 (defprotocol PColumnMathContext
-  (unary-op [ctx op-env op-arg op-kwd])
-  (binary-op [ctx op-env op-args op-scalar-fn op-kwd]))
+  (unary-op [ctx op-env op-arg op-kwd]
+    "Perform a unary operation (operation of one argument)")
+  (binary-op [ctx op-env op-args op-scalar-fn op-kwd]
+    "Perform a binary operation (operation logically of two arguments).
+  op-args is at least 2 in length -
+  (+ 1 2 3 4 5) is allowed."))

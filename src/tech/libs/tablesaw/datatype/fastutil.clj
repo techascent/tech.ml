@@ -1,4 +1,4 @@
-(ns tech.datatype.fastutil
+(ns tech.libs.tablesaw.datatype.fastutil
   (:require [tech.datatype.base :as base]
             [tech.datatype.java-primitive :as primitive]
             [clojure.core.matrix.protocols :as mp])

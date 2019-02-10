@@ -3,568 +3,268 @@
 
   Using this definition, things like k-fold have natural interpretations.
 
-  While this works well for clojure generation/manipulation,  ML interfaces uniformly
-  require this sequence to be coalesced somehow into larger buffers; sometimes on a
-  point by point basis and sometimes into batching buffers.  This file is intended
-  to provide direct, simple tools to provide either type of coalesced information.
-
   Care has been taken to keep certain operations lazy so that datasets of unbounded
   length can be manipulated.  Operatings like auto-scaling, however, will read the
   dataset into memory."
   (:require [tech.datatype :as dtype]
+            [tech.ml.protocols.column :as col-proto]
+            [tech.ml.protocols.dataset :as ds-proto]
             [tech.parallel :as parallel]
-            [tech.compute.cpu.tensor-math :as cpu-tm]
-            [tech.compute.tensor :as ct]
-            [tech.compute.tensor.operations :as ops]
-            [clojure.core.matrix.stats :as m-stats]
-            [tech.ml.utils :as utils])
-  (:import [java.util Iterator NoSuchElementException]))
+            [clojure.core.matrix :as m]
+            [clojure.set :as c-set]))
 
 
 (set! *warn-on-reflection* true)
 
 
-(defn get-dataset-item
-  [dataset-entry item-key {:keys [label-map]}]
-  (if-let [retval (get dataset-entry item-key)]
-    (if-let [retval-labels (get label-map item-key)]
-      (if-let [labelled-retval (get retval-labels retval)]
-        labelled-retval
-        (throw (ex-info "Failed to find label for item"
-                        {:item-key item-key
-                         :ds-entry retval
-                         :label-map label-map})))
-      retval)
-    (throw (ex-info "Failed to get dataset item"
-                    {:item-key item-key
-                     :dataset-entry-keys (keys dataset-entry)}))))
+(defn dataset-name
+  [dataset]
+  (ds-proto/dataset-name dataset))
+
+(defn maybe-column
+  "Return either column if exists or nil."
+  [dataset column-name]
+  (ds-proto/maybe-column dataset column-name))
 
 
-(defn- ecount-map
-  [entry-keys dataset-entry-values]
-  (->> (map dtype/ecount dataset-entry-values)
-       (zipmap entry-keys)))
+(defn column
+  "Return the column or throw if it doesn't exist."
+  [dataset column-name]
+  (if-let [retval (maybe-column dataset column-name)]
+    retval
+    (throw (ex-info (format "Failed to find column: %s" column-name)
+                    {:column-name column-name}))))
+
+(defn columns
+  "Return sequence of all columns in dataset."
+  [dataset]
+  (ds-proto/columns dataset))
+
+(defn add-column
+  "Add a new column. Error if name collision"
+  [dataset column]
+  (ds-proto/add-column dataset column))
+
+(defn remove-column
+  "Fails quietly"
+  [dataset col-name]
+  (ds-proto/remove-column dataset col-name))
+
+(defn update-column
+  "Update a column returning a new dataset.  update-fn is a column->column
+  transformation.  Error if column does not exist."
+  [dataset col-name update-fn]
+  (ds-proto/update-column dataset col-name update-fn))
+
+(defn add-or-update-column
+  "If column exists, replace.  Else append new column."
+  [dataset column]
+  (ds-proto/add-or-update-column dataset column))
 
 
-(defn- dataset-entry->data
-  [entry-keys dataset-entry options]
-  (->> entry-keys
-       (map #(get-dataset-item dataset-entry % options))))
+(defn select
+  "Reorder/trim dataset according to this sequence of indexes.  Returns a new dataset.
+colname-seq - either keyword :all or list of column names with no duplicates.
+index-seq - either keyword :all or list of indexes.  May contain duplicates."
+  [dataset colname-seq index-seq]
+  (ds-proto/select dataset colname-seq index-seq))
 
 
-(defn normalize-keys
-  [kwd-or-seq]
-  (when kwd-or-seq
-    (-> (if-not (sequential? kwd-or-seq)
-          [kwd-or-seq]
-          kwd-or-seq)
-        vec)))
+(defn select-columns
+  [dataset col-name-seq]
+  (select dataset col-name-seq :all))
 
 
-(defn- check-entry-ecounts
-  [expected-ecount-map all-keys ds-entry options]
-  (let [entry-values (dataset-entry->data all-keys ds-entry options)
-        ds-entry-ecounts (ecount-map all-keys entry-values)]
-    (when-not (= expected-ecount-map
-                 ds-entry-ecounts)
-      (throw (ex-info "Dataset ecount mismatch"
-                      {:first-item-ecounts expected-ecount-map
-                       :entry-ecounts ds-entry-ecounts})))
-    entry-values))
+(defn index-value-seq
+  "Get a sequence of tuples:
+  [idx col-value-vec]
+
+Values are in order of column-name-seq.  Duplicate names are allowed and result in
+duplicate values."
+  [dataset]
+  (ds-proto/index-value-seq dataset))
 
 
-(defn- ecount-from-map
-  [key-seq ecount-map]
-  (->> key-seq
-       (map #(get ecount-map %))
-       (apply + 0)))
+(defn supported-dataset-stats
+  "Return the set of natively supported stats for the dataset.  This must be at least
+#{:mean :variance :median :skew}."
+  [dataset]
+  (ds-proto/supported-stats dataset))
 
 
-(defn- dataset->batched-dataset
-  "Partition a dataset into batches and produce a sequence of maps
-  that include the information from the original dataset but the
-  features and labels are concatenated on a key-by-key basis.
-  dataset keys not in data-keys are all coalesced into
-  :extra-data.
-
-  Options
-  :keep-extra? Keep the extra data or discard it.
-  :ensure-commensurate? Ensure all batches are of same size.
-
-  Returns
-  {::features ::label :extra-data}"
-  [feature-keys label-keys batch-size {:keys [keep-extra? label-map]
-                                       :or {keep-extra? true}
-                                       :as options}
-   dataset]
-  (let [feature-keys (normalize-keys feature-keys)
-        label-keys (normalize-keys label-keys)
-        n-features (count feature-keys)
-        all-keys (concat feature-keys label-keys)
-        expected-ecount-map (->> (dataset-entry->data all-keys (first dataset) options)
-                                 (ecount-map all-keys))
-        batch-size (or batch-size 1)]
-    ;;We have to remember the ecounts at a high level because once they are
-    ;;interleaved we get potentially ragged dimensions and there is no efficient
-    ;;way to handle that.
-    {:value-ecount (* batch-size
-                      (ecount-from-map feature-keys expected-ecount-map))
-     :label-ecount (* batch-size
-                      (ecount-from-map label-keys expected-ecount-map))
-     :dataset
-     (->> dataset
-          (partition-all batch-size)
-          (map
-           (fn [dataset-batch]
-             (when (not= batch-size (count dataset-batch))
-               (throw (ex-info "Dataset size is not commensurate with batch size"
-                               {:batch-size batch-size
-                                :last-batch-count (count dataset-batch)})))
-             (let [interleaved-items
-                   (->> dataset-batch
-                        (map
-                         (fn [ds-entry]
-                           (let [entry-values (check-entry-ecounts expected-ecount-map
-                                                                   all-keys
-                                                                   ds-entry
-                                                                   options)
-                                 leftover (apply dissoc ds-entry all-keys)]
-                             (cond-> {::features (take n-features entry-values)
-                                      ::label (drop n-features entry-values)}
-                               (and keep-extra? (seq leftover))
-                               (assoc :extra-data leftover))))))
-                   leftover (->> (map :extra-data interleaved-items)
-                                 (remove nil?)
-                                 seq)]
-               (cond-> {::features (mapcat ::features interleaved-items)
-                        ::label (mapcat ::label interleaved-items)}
-                 (and leftover keep-extra?)
-                 (assoc :extra-data leftover))))))}))
+(defn from-prototype
+  "Create a new dataset that is the same type as this one but with a potentially
+different table name and column sequence.  Take care that the columns are all of
+the correct type."
+  [dataset table-name column-seq]
+  (ds-proto/from-prototype dataset table-name column-seq))
 
 
-(defn coalesce-dataset
-  "Take a dataset and produce a sequence of values,label maps
-  where the entries are coalesced items of the dataset.
-  Ecounts are always checked.
-options are:
-  datatype - datatype to use.
-  unchecked? - true for faster conversions to container.
-  scalar-label? - true if the label should be a single scalar value.
-  container-fn - container constructor with prototype:
-     (container-fn datatype elem-count {:keys [unchecked?] :as options})
-  queue-depth - parallelism used for coalescing - see tech.parallel/queued-pmap
-    This is useful with the data sequence invoves cpu-intensive or blocking
-    transformations (loading large images, scaling them, etc) and the train/test
-    method is relatively fast in comparison.  Defaults to 0 in which case queued-pmap
-    turns into just map.
-  batch-size - nil - point by point conversion
-             - number - items are coalesced into batches of given size.  Options map
-                 passed in is passed to dataset->batched-dataset.
-  keep-extra? - Keep extra data in the items.  Defaults to true.
-                Allows users to assocthat users can assoc extra information into each
-                data item for things like visualizations.
-
-  Returns a sequence of
-  {::features - container of datatype
-   :labels - container or scalar}"
-  [feature-keys label-keys {:keys [datatype
-                                   unchecked?
-                                   container-fn
-                                   queue-depth
-                                   batch-size
-                                   keep-extra?
-                                   ]
-                            :or {datatype :float64
-                                 unchecked? true
-                                 container-fn dtype/make-array-of-type
-                                 queue-depth 0
-                                 batch-size 1}
-                            :as options}
-   dataset]
-  (let [[dataset feature-keys label-keys
-         value-ecount label-ecount]
-        (let [{:keys [dataset value-ecount label-ecount]}
-              (dataset->batched-dataset feature-keys label-keys batch-size
-                                        options dataset)]
-          [dataset [::features] (when (normalize-keys label-keys)
-                                  [::label])
-           value-ecount label-ecount])
-        all-keys (concat feature-keys label-keys)
-        n-features (count feature-keys)
-
-        container-fn-options (merge options
-                                    {:unchecked? unchecked?})
-        value-ecount (long value-ecount)
-        label-ecount (long label-ecount)]
-    (->> dataset
-         (parallel/queued-pmap
-          queue-depth
-          (fn [dataset-entry]
-            ;;Batching takes care of label->integer(s) conversion so we do not do it
-            ;;again
-            (let [entry-data (dataset-entry->data all-keys dataset-entry
-                                                  (dissoc options :label-map))
-
-                  feature-data (take n-features entry-data)
-                  label-data (seq (drop n-features entry-data))
-                  feature-container (container-fn datatype value-ecount
-                                                  container-fn-options)
-                  label-container (when label-keys
-                                    (container-fn datatype label-ecount
-                                                  container-fn-options))]
-              ;;Remove all used keys.  This saves potentially huge amounts of
-              ;;memory.  That being said, there may be information on the dataset
-              ;;entry that is useful to recreate sample so we are conservatively
-              ;;keeping anything we didn't convert.
-              (try
-                (merge (if keep-extra?
-                         (apply dissoc dataset-entry all-keys)
-                         {})
-                       {::features (first (dtype/copy-raw->item!
-                                           feature-data feature-container 0
-                                           container-fn-options))}
-                       (when label-keys
-                         {::label (if label-container
-                                    (first (dtype/copy-raw->item!
-                                            label-data label-container 0
-                                            container-fn-options))
-                                    (if unchecked?
-                                      (let [label-val (-> (flatten label-data)
-                                                          first)]
-                                        (dtype/unchecked-cast label-val datatype)
-                                        (dtype/cast label-val datatype))))}))
-                ;;certain classes of errors are caught here.
-                (catch Throwable e
-                  (throw (ex-info "Failed to convert entry"
-                                  {:error e
-                                   :entry dataset-entry}))))))))))
+(defn ds-filter
+  [dataset predicate & [column-name-seq]]
+  ;;interleave, partition count would also work.
+  (->> (index-value-seq (select dataset (or column-name-seq :all) :all))
+       (filter (fn [[idx col-values]]
+                 (apply predicate col-values)))
+       (map first)
+       (select dataset :all)))
 
 
-(defn sequence->iterator
-  "Java ml interfaces sometimes use iterators where they really should
-  use sequences (iterators have state).  In any case, we do what we can."
-  ^Iterator [item-seq]
-  (let [next-item-fn (parallel/create-next-item-fn item-seq)
-        next-item-atom (atom (next-item-fn))]
-    (proxy [Iterator] []
-      (hasNext []
-        (boolean @next-item-atom))
-      (next []
-        (locking this
-          (if-let [entry @next-item-atom]
-            (do
-              (reset! next-item-atom (next-item-fn))
-              entry)
-            (throw (NoSuchElementException.))))))))
+(defn ds-group-by
+  [dataset key-fn & [column-name-seq]]
+  (->> (index-value-seq (select dataset (or column-name-seq :all) :all))
+       (group-by (fn [[idx col-values]]
+                   (apply key-fn col-values)))
+       (map first)
+       (select dataset :all)))
+
+
+(defn ds-map
+  [dataset map-fn & [column-name-seq]]
+  (->> (index-value-seq (select dataset (or column-name-seq :all) :all))
+       (map (fn [[idx col-values]]
+              (apply map-fn col-values)))))
+
+
+(defn ->flyweight
+  "Convert dataset to seq-of-maps dataset.
+  Flag indicates "
+  [dataset & {:keys [column-name-seq
+                     error-on-missing-values?]
+              :or {column-name-seq :all
+                   error-on-missing-values? true}}]
+  (let [dataset (select dataset column-name-seq :all)
+        column-name-seq (map col-proto/column-name (columns dataset))]
+    (if error-on-missing-values?
+      (ds-map dataset (fn [& args]
+                        (zipmap column-name-seq args)))
+      ;;Much slower algorithm
+      (if-let [ds-columns (seq (columns dataset))]
+        (let [ecount (long (apply min (map dtype/ecount ds-columns)))
+              columns (columns dataset)]
+          (for [idx (range ecount)]
+            (->> (for [col columns]
+                   [(col-proto/column-name col)
+                    (when-not (col-proto/is-missing? col idx)
+                      (col-proto/get-column-value col idx))])
+                 (remove nil?)
+                 (into {}))))))))
 
 
 (defn ->k-fold-datasets
   "Given 1 dataset, prepary K datasets using the k-fold algorithm.
   Randomize dataset defaults to true which will realize the entire dataset
   so use with care if you have large datasets."
-  [k {:keys [randomize-dataset?]
-      :or {randomize-dataset? true}}
-   dataset]
-  (let [dataset (cond-> dataset
+  [dataset k {:keys [randomize-dataset?]
+              :or {randomize-dataset? true}}]
+  (let [[n-rows n-cols] (m/shape dataset)
+        indexes (cond-> (range n-rows)
                   randomize-dataset? shuffle)
-        fold-size (inc (quot (count dataset) k))
-        folds (vec (partition-all fold-size dataset))]
+        fold-size (inc (quot (long n-rows) k))
+        folds (vec (partition-all fold-size indexes))]
     (for [i (range k)]
-      {:test-ds (nth folds i)
-       :train-ds (apply concat (keep-indexed #(if (not= %1 i) %2) folds))})))
+      {:test-ds (select dataset :all (nth folds i))
+       :train-ds (select dataset :all (->> (keep-indexed #(if (not= %1 i) %2) folds)
+                                           (apply concat )))})))
 
 
 (defn ->train-test-split
-  [{:keys [randomize-dataset? train-fraction]
-    :or {randomize-dataset? true
-         train-fraction 0.7}}
-   dataset]
-  (let [dataset (cond-> dataset
+  [dataset {:keys [randomize-dataset? train-fraction]
+            :or {randomize-dataset? true
+                 train-fraction 0.7}}]
+  (let [[n-rows n-cols] (m/shape dataset)
+        indexes (cond-> (range n-rows)
                   randomize-dataset? shuffle)
-        n-elems (count dataset)
+        n-elems (long n-rows)
         n-training (long (Math/round (* n-elems (double train-fraction))))]
-    {:train-ds (take n-training dataset)
-     :test-ds (drop n-training dataset)}))
+    {:train-ds (select dataset :all (take n-training indexes))
+     :test-ds (select dataset :all (drop n-training indexes))}))
 
 
-(defn- update-min-max
-  [old-val batch-size new-val]
-  ;;Ensure we have jvm-representable values (not pointers to c objects)
-  (let [[min-container max-container]
-        (or old-val
-            (let [container-shape [(quot (dtype/ecount new-val)
-                                         batch-size)]
-                  first-row (ct/in-place-reshape new-val container-shape)]
-              [(-> (ct/from-prototype new-val :shape container-shape)
-                   (ct/assign! first-row))
-               (-> (ct/from-prototype new-val :shape container-shape)
-                   (ct/assign! first-row))]))]
-    [(ops/min min-container new-val)
-     (ops/max max-container new-val)]))
+(defn ->row-major
+  "Given a dataset and a map if desired key names to sequences of columns,
+  produce a sequence of maps where each key name points to contiguous vector
+  composed of the column values concatenated."
+  [dataset key-colname-seq-map {:keys [datatype]
+                                :or {datatype :float64}}]
+  (let [key-val-seq (seq key-colname-seq-map)
+        all-col-names (mapcat second key-val-seq)
+        item-col-count-map (->> key-val-seq
+                                (map (fn [[item-k item-col-seq]]
+                                       (when (seq item-col-seq)
+                                         [item-k (count item-col-seq)])))
+                                (remove nil?)
+                                vec)]
+    (ds-map dataset
+            (fn [& column-values]
+              (->> item-col-count-map
+                   (reduce (fn [[flyweight column-values] [item-key item-count]]
+                             (let [contiguous-array (dtype/make-array-of-type datatype (take item-count column-values))]
+                               (when-not (= (dtype/ecount contiguous-array)
+                                            (long item-count))
+                                 (throw (ex-info "Failed to get correct number of items" {:item-key item-key})))
+                               [(assoc flyweight item-key contiguous-array)
+                                (drop item-count column-values)]))
+                           [{} column-values])
+                   first))
+            all-col-names)))
 
 
-(defn per-parameter-dataset-min-max
-  "Create a new (coalesced) dataset with parameters scaled.
-If label range is not provided then labels are left unscaled."
-  [batch-size coalesced-dataset]
-  (let [batch-size (long (or batch-size 1))]
-    (reduce (fn [min-max-map {:keys [::features ::label]}]
-              (cond-> min-max-map
-                features (update ::features update-min-max batch-size features)
-                label (update ::label update-min-max batch-size label)))
-            {}
-            coalesced-dataset)))
+(defn label-inverse-map
+  "Given options generated during ETL operations and annotated with :label-columns
+  sequence container 1 label column, generate a reverse map that maps from a dataset
+  value back to the label that generated that value."
+  [{:keys [label-columns label-map] :as options}]
+  (when-not (= 1 (count label-columns))
+    (throw (ex-info (format "Multiple label columns found: %s" label-columns)
+                    {:label-columns label-columns})))
+  (if-let [col-label-map (get label-map (first label-columns))]
+    (c-set/map-invert col-label-map)
+    (throw (ex-info (format "Failed to find label map for column %s"
+                            (first label-columns))
+                    {:label-column (first label-columns)
+                     :label-map-keys (keys label-map)}))))
 
 
-(defn min-max-map->scale-map
-  [min-max-map range-map]
-  (->> min-max-map
-       (map (fn [[k [min-v max-v]]]
-              (if-let [range-data (get range-map k)]
-                [k
-                 (let [[min-val max-val] range-data
-                       val-range (- (double max-val)
-                                    (double min-val))
-                       range-data (-> (ct/clone max-v)
-                                      (ops/- min-v)
-                                      (ops// val-range))]
-                   {:per-elem-subtract min-v
-                    :per-elem-div range-data
-                    :per-elem-bias min-val})])))
-       (into {})))
+(defn labels
+  "Given a dataset and an options map, generate a sequence of labels.
+  If label count is 1, then if there is a label-map associated with column
+  generate sequence of labels."
+  [dataset {:keys [label-columns label-map] :as options}]
+  (if-let [label-column (when (= (count label-columns) 1)
+                          (first label-columns))]
+    (let [column-values (-> (column dataset label-column)
+                            col-proto/column-values)]
+      (if-let [label-map (get label-map label-column)]
+        (let [inverse-map (c-set/map-invert label-map)]
+          (->> column-values
+               (mapv (fn [col-val]
+                       (if-let [col-label (get inverse-map (long col-val))]
+                         col-label
+                         (throw (ex-info (format "Failed to find label for column value %s" col-val)
+                                         {:inverse-label-map inverse-map})))))))
+        column-values))
+    (->> (->row-major dataset {:labels label-columns})
+         (map :labels))))
 
 
-(defn per-parameter-scale-coalesced-dataset
-  "scale a coalesced dataset in place"
-  [scale-map coalesced-dataset]
-  (->> coalesced-dataset
-       (map
-        (fn [ds-entry]
-          (merge ds-entry
-                 (->> scale-map
-                      (map (fn [[k scale-entry]]
-                             (when-let [v (get ds-entry k)]
-                               [k (-> (ct/clone v)
-                                      (ops/- (:per-elem-subtract scale-entry))
-                                      (ops// (:per-elem-div scale-entry))
-                                      (ops/+ (:per-elem-bias scale-entry)))])))
-                      (remove nil?)
-                      (into {})))))))
+(defn map-seq->dataset
+  [map-seq {:keys [scan-depth
+                   column-definitions
+                   table-name]
+            :or {scan-depth 100
+                 table-name "_unnamed"}
+            :as options}]
+  ((parallel/require-resolve 'tech.libs.tablesaw/map-seq->tablesaw-dataset)
+   map-seq options))
 
 
-(defn post-process-coalesced-dataset
-  [options feature-keys key-ecount-map label-keys coalesced-dataset]
-  (let [label-map (:label-map options)
-        options (merge options
-                       {::dataset-info
-                        (merge {::feature-ecount (->> feature-keys
-                                                      (map key-ecount-map)
-                                                      (apply +))
-                                ::key-ecount-map key-ecount-map}
-                               (when (and (= 1 (count label-keys))
-                                          (get label-map (first label-keys)))
-                                 {::num-classes (count (get label-map
-                                                            (first label-keys)))}))
-                        ::feature-keys feature-keys
-                        ::label-keys label-keys})]
-    (cond
-      (:range-map options)
-      (let [min-max-map (per-parameter-dataset-min-max (:batch-size options)
-                                                       coalesced-dataset)
-            scale-map (min-max-map->scale-map min-max-map (:range-map options))]
-        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
-                             scale-map coalesced-dataset)
-         :options (-> (dissoc options :range-map)
-                      (assoc :scale-map scale-map))})
-      (:scale-map options)
-      (let [scale-map (:scale-map options)]
-        {:coalesced-dataset (per-parameter-scale-coalesced-dataset
-                             scale-map coalesced-dataset)
-         :options options})
-      :else
-      {:coalesced-dataset coalesced-dataset
-       :options options})))
-
-
-(defn apply-dataset-options
-  "Apply dataset options to dataset producing a coalesced dataset and a new options map.
-  A coalesced dataset is a dataset where all the feature keys are coalesced into a
-  contiguous ::features member and all the labels are coalesced into a contiguous ::labels
-  member.
-
-  Transformations:
-
-  If the dataset as nominal (not numeric) data then this data is converted into integer
-  data and the original keys mapped to the indexes.  This is recorded in :label-map.
-
-  Some global information about the dataset is recorded:
-  ::dataset-info {:value-ecount - Ecount of the feature vector.
-                 :key-ecount-map - map of keys to ecounts for all keys.}
-
-  :feature-keys normaliaed feature keys.
-  :label-keys normalized label keys.
-
-  :range-map - if passed in, coalesced ::features or ::label's are set to the ranges
-  specified in the map.  This means a min-max pass is performed and per-element scaling
-  is done.  See tests for example. The result of a range map operation is a per-element
-  scale map.
-
-  :scale-map - if passed in, this is a map of #{::features ::label} to a scaling operation:
-       (-> (ct/clone v)
-           (ops/- (:per-elem-subtract scale-entry))
-           (ops// (:per-elem-div scale-entry))
-           (ops/+ (:per-elem-bias scale-entry)))
-
-  "
-  [feature-keys label-keys options dataset]
-  (let [first-item (first dataset)]
-    (if (and (contains? first-item ::features)
-             (contains? first-item ::label)
-             (contains? options ::dataset-info))
-      ;;This has already been coalesced
-      (do
-        (when-not (and (= [::features] (normalize-keys feature-keys))
-                       (or (= [::label] (normalize-keys label-keys))
-                           (= nil label-keys)))
-          (throw (ex-info "Dataset appears coalesced but new keys appear to be added"
-                          {:feature-keys feature-keys
-                           :label-keys label-keys})))
-        {:options options
-         :coalesced-dataset
-         ;;Then we re-coalesce as this may change the container type.
-         (coalesce-dataset feature-keys label-keys options dataset)})
-      ;;Else do the work of analyzing and coalescing the dataset.
-      (let [feature-keys (normalize-keys feature-keys)
-            label-keys (normalize-keys label-keys)
-            all-keys (concat feature-keys label-keys)
-            key-ecount-map (->> (dataset-entry->data all-keys first-item {})
-                                (ecount-map all-keys))
-            categorical-labels (->> all-keys
-                                    (map #(let [item (get-dataset-item
-                                                      first-item % {})]
-                                            (when (or (string? item)
-                                                      (keyword? item))
-                                              %)))
-                                    (remove nil?)
-                                    seq)
-            label-map (get options :label-map)
-            label-map
-            ;;scan dataset for labels.
-            (if (and categorical-labels
-                     (not label-map))
-              (let [label-atom (atom {})
-                    label-base-idx (long (or (:multiclass-label-base-index options)
-                                             0))
-                    map-fn (if (:deterministic-label-map? options)
-                             map
-                             pmap)]
-                (->> dataset
-                     (map-fn
-                      (fn [ds-entry]
-                        (->> categorical-labels
-                             (map (fn [cat-label]
-                                    (let [ds-value (get ds-entry cat-label)]
-                                      (swap! label-atom update cat-label
-                                             (fn [existing]
-                                               (if-let [idx (get existing ds-value)]
-                                                 existing
-                                                 (assoc existing ds-value
-                                                        (+ label-base-idx
-                                                           (count existing)))))))))
-                             dorun)
-                        ds-entry))
-                     dorun)
-                @label-atom))
-            options (merge options
-                           (when label-map
-                             {:label-map label-map}))]
-        (->> (coalesce-dataset feature-keys label-keys
-                               options dataset)
-             (post-process-coalesced-dataset
-              options feature-keys key-ecount-map label-keys))))))
-
-
-(defn check-dataset-datatypes
-  "Check that the datatype of the rest of the dataset matches
-  the datatypes of the first entry."
-  [dataset]
-  (let [ds-types (->> (first dataset)
-                      (map (fn [[k v]]
-                             [k (number? v)]))
-                      (into {}))]
-    (->> dataset
-         (mapcat (fn [ds-entry]
-                   (->> ds-entry
-                        (remove (fn [[dk dv]]
-                                  (if (ds-types dk)
-                                    (number? dv)
-                                    (not (number? dv)))))
-                        seq)))
-         (remove nil?)
-         set)))
-
-
-(defn force-keyword
-  "Force a value to a keyword.  Often times data is backwards where normative
-  values are represented by numbers; this removes important information from
-  a dataset.  If a particular column is categorical, it should be represented
-  by a keyword."
-  [value & {:keys [missing-value-placeholder]
-            :or {missing-value-placeholder -1}}]
-  (cond
-    (number? value)
-    (if (= value missing-value-placeholder)
-      :unknown
-      (keyword (str (long value))))
-    (string? value)
-    (keyword value)
-    :else
-    value))
-
-
-(defn calculate-nominal-stats
-  "Calculate the mean, variance of each value of each nominal-type feature
-  as it relates to the regressed value.  This is useful to provide a simple
-  number of derived features that directly relate to regressed values and
-  that often provide better learning."
-  [nominal-feature-keywords label-keyword dataset]
-  (let [label-seq (map #(get % label-keyword) dataset)
-        keyword-stats
-        (->> nominal-feature-keywords
-             (pmap
-              (fn [kwd]
-                [kwd (->> dataset
-                          (group-by kwd)
-                          (map (fn [[item-key item-val-seq]]
-                                 [item-key
-                                  {:mean (m-stats/mean (map label-keyword
-                                                            item-val-seq))
-                                   :variance (if (> (count item-val-seq)
-                                                    1)
-                                               (m-stats/variance (map label-keyword
-                                                                      item-val-seq))
-                                               0)}]))
-                          (into {}))]))
-             (into {}))]
-    (assoc keyword-stats
-           label-keyword {:mean (m-stats/mean label-seq)
-                          :variance (m-stats/variance label-seq)})))
-
-
-(defn augment-dataset-with-stats
-  [stats-map nominal-feature-keywords label-keyword dataset]
-  (->>
-   dataset
-   (map (fn [ds-entry]
-          (reduce
-           (fn [ds-entry feature-key]
-             (let [key-mean (keyword (str (name feature-key) "mean"))
-                   key-var (keyword (str (name feature-key) "variance"))]
-               (if-let [stats-entry (get-in stats-map
-                                            [feature-key
-                                             (get ds-entry feature-key)])]
-                 (utils/prefix-merge (name feature-key) ds-entry stats-entry)
-                 (utils/prefix-merge (name feature-key) ds-entry
-                                     (get stats-map label-keyword)))))
-           ds-entry
-           nominal-feature-keywords)))))
+(defn ->dataset
+  [item & {:keys [table-name]
+           :or {table-name "_unnamed"}}]
+  (if (satisfies? ds-proto/PColumnarDataset item)
+    item
+    (when (and (sequential? item)
+               (or (not (seq item))
+                   (map? (first item))))
+      (map-seq->dataset item {:table-name table-name}))))

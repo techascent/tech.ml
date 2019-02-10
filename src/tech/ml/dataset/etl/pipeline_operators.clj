@@ -1,6 +1,6 @@
 (ns tech.ml.dataset.etl.pipeline-operators
-  (:require [tech.ml.protocols.dataset :as ds-proto]
-            [tech.ml.protocols.column :as col-proto]
+  (:require [tech.ml.dataset :as ds]
+            [tech.ml.dataset.column :as ds-col]
             [tech.ml.protocols.etl :as etl-proto]
             [tech.datatype :as dtype]
             [tech.ml.dataset.etl.column-filters :as column-filters]
@@ -74,30 +74,30 @@
 (def-etl-operator
   set-attribute
   nil
-  (let [retval (ds-proto/update-column
+  (let [retval (ds/update-column
                 dataset column-name
                 (fn [col]
-                  (->> (merge (col-proto/metadata col)
+                  (->> (merge (ds-col/metadata col)
                               (apply hash-map op-args))
-                       (col-proto/set-metadata col))))]
+                       (ds-col/set-metadata col))))]
     retval))
 
 
 (def-etl-operator
   remove
   nil
-  (ds-proto/remove-column dataset column-name))
+  (ds/remove-column dataset column-name))
 
 
 (def-etl-operator
   replace-missing
   (let [missing-val (first op-args)]
     {:missing-value missing-val})
-  (ds-proto/update-column
+  (ds/update-column
    dataset column-name
    (fn [col]
-     (let [missing-indexes (col-proto/missing col)]
-       (col-proto/set-values col (map vector
+     (let [missing-indexes (ds-col/missing col)]
+       (ds-col/set-values col (map vector
                                       (seq missing-indexes)
                                       (repeat (:missing-value context))))))))
 
@@ -128,12 +128,12 @@
   string->number
   (if-let [table-vals (seq (first op-args))]
     (make-string-table-from-args table-vals)
-    (make-string-table-from-args (col-proto/unique (ds-proto/column
+    (make-string-table-from-args (ds-col/unique (ds/column
                                                     dataset column-name))))
-  (ds-proto/update-column
+  (ds/update-column
    dataset column-name
    (fn [col]
-     (let [existing-values (col-proto/column-values col)
+     (let [existing-values (ds-col/column-values col)
            str-table context
            new-col-dtype (etl-datatype)
            data-values (dtype/make-array-of-type
@@ -147,45 +147,45 @@
                                                       {:item-value item-val
                                                        :possible-values (set (keys str-table))}))))))
                         {:unchecked? true})]
-       (-> (col-proto/new-column col new-col-dtype data-values column-name)
-           (col-proto/set-metadata (select-keys (col-proto/metadata col)
+       (-> (ds-col/new-column col new-col-dtype data-values column-name)
+           (ds-col/set-metadata (select-keys (ds-col/metadata col)
                                                 [:target? :categorical?])))))))
 
 
 (def-etl-operator
   replace-string
   nil
-  (ds-proto/update-column
+  (ds/update-column
    dataset column-name
    (fn [col]
-     (let [existing-values (col-proto/column-values col)
+     (let [existing-values (ds-col/column-values col)
            [src-str replace-str] op-args
            data-values (into-array String (->> existing-values
                                             (map (fn [str-value]
                                                    (if (= str-value src-str)
                                                      replace-str
                                                      str-value)))))]
-       (-> (col-proto/new-column col :string data-values column-name)
-           (col-proto/set-metadata (select-keys (col-proto/metadata col)
+       (-> (ds-col/new-column col :string data-values column-name)
+           (ds-col/set-metadata (select-keys (ds-col/metadata col)
                                                 [:target? :categorical?])))))))
 
 
 (def-etl-operator
   ->etl-datatype
   nil
-  (ds-proto/update-column
+  (ds/update-column
    dataset column-name
    (fn [col]
      (if-not (= (dtype/get-datatype col) (etl-datatype))
        (let [new-col-dtype (etl-datatype)
-             col-values (col-proto/column-values col)
+             col-values (ds-col/column-values col)
              data-values (dtype/make-array-of-type
                           new-col-dtype
                           (if (= :boolean (dtype/get-datatype col))
                             (map #(if % 1 0) col-values)
                             col-values))]
-         (-> (col-proto/new-column col new-col-dtype data-values column-name)
-             (col-proto/set-metadata (select-keys (col-proto/metadata col)
+         (-> (ds-col/new-column col new-col-dtype data-values column-name)
+             (ds-col/set-metadata (select-keys (ds-col/metadata col)
                                                   [:target? :categorical?]))))
        col))))
 
@@ -213,11 +213,11 @@
   (let [result (eval-expr {:dataset dataset
                            :column-name column-name}
                           (first op-args))
-        src-col (ds-proto/maybe-column dataset column-name)]
+        src-col (ds/maybe-column dataset column-name)]
 
-    (ds-proto/add-or-update-column dataset (cond-> (col-proto/set-name result column-name)
+    (ds/add-or-update-column dataset (cond-> (ds-col/set-name result column-name)
                                              src-col
                                              ;;We can't set anything else as we don't know if the column is categorical
                                              ;;or not  If it was the target, however, it still is.
-                                             (col-proto/set-metadata (select-keys (col-proto/metadata src-col)
+                                             (ds-col/set-metadata (select-keys (ds-col/metadata src-col)
                                                                                   [:target?]))))))

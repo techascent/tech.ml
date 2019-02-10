@@ -1,5 +1,5 @@
 (ns tech.ml.registry
-  (:require [tech.ml.protocols :as proto]))
+  (:require [tech.ml.protocols.system :as system-proto]))
 
 (def ^:dynamic *registered-systems* (atom {}))
 
@@ -17,8 +17,8 @@
 
 (defn register-system
   [system]
-  (swap! *registered-systems* assoc (proto/system-name system) system)
-  (proto/system-name system))
+  (swap! *registered-systems* assoc (system-proto/system-name system) system)
+  (system-proto/system-name system))
 
 
 (defn system-names

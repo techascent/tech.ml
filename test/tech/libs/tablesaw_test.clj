@@ -1,13 +1,13 @@
-(ns tech.ml.dataset.tablesaw-test
-  (:require [tech.ml.dataset.tablesaw :as tablesaw]
-            [tech.datatype.tablesaw :as dtype-tbl]
+(ns tech.libs.tablesaw-test
+  (:require [tech.libs.tablesaw :as tablesaw]
+            [tech.libs.tablesaw.datatype.tablesaw :as dtype-tbl]
             [tech.ml.dataset.etl :as etl]
             [tech.ml.dataset.etl.column-filters :as col-filters]
-            [tech.ml.protocols.dataset :as ds-proto]
-            [tech.ml.protocols.column :as col-proto]
+            [tech.ml.dataset :as ds]
+            [tech.ml.dataset.column :as ds-col]
             [tech.ml.loss :as loss]
-            [tech.ml-base :as ml]
-            [tech.xgboost]
+            [tech.ml :as ml]
+            [tech.libs.xgboost]
             [tech.datatype :as dtype]
             [clojure.core.matrix :as m]
             [clojure.set :as c-set]
@@ -18,7 +18,7 @@
   (let [test-col (tablesaw/->TablesawColumn
                   (dtype-tbl/make-column :int32 (range 10)) {})
         select-vec [3 5 7 3 2 1]
-        new-col (col-proto/select test-col select-vec)]
+        new-col (ds-col/select test-col select-vec)]
     (is (= select-vec
            (dtype/->vector new-col)))))
 
@@ -67,22 +67,22 @@
   (let [src-dataset (tablesaw/path->tablesaw-dataset "data/aimes-house-prices/train.csv")
         ;;For inference, we won't have the target but we will have everything else.
         inference-columns (c-set/difference
-                           (set (map col-proto/column-name
-                                     (ds-proto/columns src-dataset)))
+                           (set (map ds-col/column-name
+                                     (ds/columns src-dataset)))
                            #{"SalePrice"})
-        inference-dataset (-> (ds-proto/select src-dataset
+        inference-dataset (-> (ds/select src-dataset
                                                inference-columns
                                                (range 10))
-                              (ds-proto/->flyweight :error-on-missing-values? false))
+                              (ds/->flyweight :error-on-missing-values? false))
         {:keys [dataset pipeline options]}
         (-> src-dataset
             (etl/apply-pipeline basic-pipeline
                                 {:target "SalePrice"}))
         post-pipeline-columns (c-set/difference inference-columns #{"Id"})
-        sane-dataset-for-flyweight (ds-proto/select dataset post-pipeline-columns
+        sane-dataset-for-flyweight (ds/select dataset post-pipeline-columns
                                                     (range 10))
         final-flyweight (-> sane-dataset-for-flyweight
-                            (ds-proto/->flyweight))]
+                            (ds/->flyweight))]
     (is (= [1460 81] (m/shape src-dataset)))
     (is (= [1460 81] (m/shape dataset)))
 
@@ -97,10 +97,10 @@
            (vec (col-filters/execute-column-filter dataset :target?))))
     (is (= []
            (vec (col-filters/execute-column-filter dataset [:not [:numeric?]]))))
-    (let [sale-price (ds-proto/column dataset "SalePriceDup")
-          sale-price-l1p (ds-proto/column dataset "SalePrice")
-          sp-stats (col-proto/stats sale-price [:mean :min :max])
-          sp1p-stats (col-proto/stats sale-price-l1p [:mean :min :max])]
+    (let [sale-price (ds/column dataset "SalePriceDup")
+          sale-price-l1p (ds/column dataset "SalePrice")
+          sp-stats (ds-col/stats sale-price [:mean :min :max])
+          sp1p-stats (ds-col/stats sale-price-l1p [:mean :min :max])]
       (is (m/equals (mapv sp-stats [:mean :min :max])
                     [180921.195890 34900 755000]
                     0.01))
@@ -120,19 +120,19 @@
       ;;And the definition of exact is...
       (is (= (mapv :datatype (->> (:dataset-column-metadata options)
                                   (sort-by :name)))
-             (->> (ds-proto/columns exact-columns)
-                  (map col-proto/metadata)
+             (->> (ds/columns exact-columns)
+                  (map ds-col/metadata)
                   (sort-by :name)
                   (mapv :datatype))))
       (let [inference-ds (-> (etl/apply-pipeline exact-columns pipeline
                                                  (assoc options :inference? true))
                              :dataset)]
         ;;spot check a few of the items
-        (is (m/equals (dtype/->vector (ds-proto/column sane-dataset-for-flyweight "MSSubClass"))
-                      (dtype/->vector (ds-proto/column inference-ds "MSSubClass"))))
+        (is (m/equals (dtype/->vector (ds/column sane-dataset-for-flyweight "MSSubClass"))
+                      (dtype/->vector (ds/column inference-ds "MSSubClass"))))
         ;;did categoical values get encoded identically?
-        (is (m/equals (dtype/->vector (ds-proto/column sane-dataset-for-flyweight "OverallQual"))
-                      (dtype/->vector (ds-proto/column inference-ds "OverallQual"))))))))
+        (is (m/equals (dtype/->vector (ds/column sane-dataset-for-flyweight "OverallQual"))
+                      (dtype/->vector (ds/column inference-ds "OverallQual"))))))))
 
 
 (defn train-test-split
@@ -144,8 +144,8 @@
         num-train (long (* num-rows train-fraction))
         train-indexes (take num-train index-seq)
         test-indexes (drop num-train index-seq)]
-    {:train-ds (ds-proto/select dataset :all train-indexes)
-     :test-ds (ds-proto/select dataset :all test-indexes)}))
+    {:train-ds (ds/select dataset :all train-indexes)
+     :test-ds (ds/select dataset :all test-indexes)}))
 
 
 (deftest train-predict-test
@@ -154,22 +154,22 @@
         {:keys [dataset pipeline options]}
         (etl/apply-pipeline src-dataset basic-pipeline {:target "SalePrice"})
         {:keys [train-ds test-ds]} (train-test-split dataset)
-        all-columns (set (map col-proto/column-name (ds-proto/columns dataset)))
+        all-columns (set (map ds-col/column-name (ds/columns dataset)))
         label-keys #{"SalePrice"}
         feature-keys (c-set/difference all-columns #{"SalePrice" "SalePriceDup"})
-        test-full-row-major (->> (ds-proto/->row-major dataset {:feature-keys feature-keys
+        test-full-row-major (->> (ds/->row-major dataset {:feature-keys feature-keys
                                                                 :label-keys label-keys}
                                                        {:datatype :float32})
                                  (take 10)
                                  vec)
 
-        test-train-row-major (->> (ds-proto/->row-major train-ds {:feature-keys feature-keys
+        test-train-row-major (->> (ds/->row-major train-ds {:feature-keys feature-keys
                                                                   :label-keys label-keys}
                                                         {:datatype :float32})
                                   (take 10)
                                   vec)
 
-        test-test-row-major (->> (ds-proto/->row-major train-ds {:feature-keys feature-keys
+        test-test-row-major (->> (ds/->row-major train-ds {:feature-keys feature-keys
                                                                  :label-keys label-keys}
                                                        {:datatype :float32})
                                  (take 10)
@@ -179,7 +179,7 @@
         model (ml/train {:model-type :xgboost/regression}
                         feature-keys label-keys
                         train-ds)
-        labels (dtype/->vector (ds-proto/column test-ds "SalePrice"))
+        labels (dtype/->vector (ds/column test-ds "SalePrice"))
         predictions (ml/predict model test-ds)
         loss-value (loss/rmse predictions labels)]
     (is (< loss-value 0.20))))

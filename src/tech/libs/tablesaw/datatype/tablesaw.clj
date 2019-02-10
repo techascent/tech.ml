@@ -1,9 +1,9 @@
-(ns tech.datatype.tablesaw
+(ns tech.libs.tablesaw.datatype.tablesaw
   "Bindings so that you can do math on tablesaw columns."
   (:require [tech.datatype.base :as base]
             [tech.datatype.java-primitive :as primitive]
             [clojure.core.matrix.protocols :as mp]
-            [tech.datatype.fastutil :as dtype-fastutil])
+            [tech.libs.tablesaw.datatype.fastutil :as dtype-fastutil])
   (:import [tech.tablesaw.api ShortColumn IntColumn LongColumn
             FloatColumn DoubleColumn StringColumn BooleanColumn]
            [tech.tablesaw.columns Column]

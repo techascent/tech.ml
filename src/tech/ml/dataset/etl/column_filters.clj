@@ -1,6 +1,6 @@
 (ns tech.ml.dataset.etl.column-filters
-  (:require [tech.ml.protocols.dataset :as ds-proto]
-            [tech.ml.protocols.column :as col-proto]
+  (:require [tech.ml.dataset :as ds]
+            [tech.ml.dataset.column :as ds-col]
             [tech.ml.protocols.etl :as etl-proto]
             [tech.datatype.java-unsigned :as unsigned]
             [clojure.set :as c-set]))
@@ -52,14 +52,14 @@
 (defn- process-filter-args
   [dataset args]
   (if (seq args)
-    (map (partial ds-proto/column dataset) args)
-    (ds-proto/columns dataset)))
+    (map (partial ds/column dataset) args)
+    (ds/columns dataset)))
 
 
 (defn- basic-metadata-filter
   [filter-fn dataset & args]
   (->> (process-filter-args dataset args)
-       (map (comp col-proto/metadata))
+       (map (comp ds-col/metadata))
        (filter filter-fn)
        (map :name)))
 
@@ -85,7 +85,7 @@
 (register-column-filter!
  :not
  (fn [dataset & args]
-   (let [all-names (set (map col-proto/column-name (ds-proto/columns dataset)))]
+   (let [all-names (set (map ds-col/column-name (ds/columns dataset)))]
      (c-set/difference all-names (set (execute-column-filter dataset (first args)))))))
 
 
@@ -120,4 +120,4 @@
  :*
  (fn [dataset & args]
    (->> (process-filter-args args)
-        (map col-proto/column-name))))
+        (map ds-col/column-name))))

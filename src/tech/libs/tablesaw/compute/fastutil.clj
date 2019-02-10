@@ -1,4 +1,4 @@
-(ns tech.compute.fastutil
+(ns tech.libs.tablesaw.compute.fastutil
   (:require [tech.compute.cpu.typed-buffer :as cpu-typed-buffer])
   (:import [it.unimi.dsi.fastutil.bytes ByteArrayList]
            [it.unimi.dsi.fastutil.shorts ShortArrayList]
