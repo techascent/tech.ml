@@ -19,7 +19,7 @@
    (when-not (> (count (:feature-columns options)) 0)
      (throw (ex-info "Must be at least one feature column to train"
                      {:feature-columns (get options :feature-columns)})))
-   (when-not (-> (count (:label-columns options)) 0)
+   (when-not (> (count (:label-columns options)) 0)
      (throw (ex-info "Must be at least one label column to train"
                      {:label-columns (get options :label-columns)})))
    (let [ml-system (registry/system (:model-type options))
@@ -47,10 +47,7 @@
      (throw (ex-info "Must be at least one feature column to train"
                      {:feature-columns (get options :feature-columns)})))
   (let [ml-system (registry/system (:model-type options))]
-    (system-proto/predict ml-system
-                       (:options model)
-                       (:model model)
-                       dataset)))
+    (system-proto/predict ml-system options model dataset)))
 
 
 (defn dataset-seq->dataset-model-seq

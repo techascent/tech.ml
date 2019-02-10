@@ -113,9 +113,9 @@
 
     (let [exact-columns (tablesaw/map-seq->tablesaw-dataset
                          inference-dataset
-                         :column-definitions (:dataset-column-metadata options))
+                         {:column-definitions (:dataset-column-metadata options)})
           ;;Just checking that this works at all..
-          autoscan-columns (tablesaw/map-seq->tablesaw-dataset inference-dataset)]
+          autoscan-columns (tablesaw/map-seq->tablesaw-dataset inference-dataset {})]
 
       ;;And the definition of exact is...
       (is (= (mapv :datatype (->> (:dataset-column-metadata options)
@@ -158,8 +158,8 @@
         label-keys #{"SalePrice"}
         feature-keys (c-set/difference all-columns #{"SalePrice" "SalePriceDup"})
         test-full-row-major (->> (ds/->row-major dataset {:feature-keys feature-keys
-                                                                :label-keys label-keys}
-                                                       {:datatype :float32})
+                                                          :label-keys label-keys}
+                                                 {:datatype :float32})
                                  (take 10)
                                  vec)
 
@@ -180,6 +180,7 @@
                         feature-keys label-keys
                         train-ds)
         labels (dtype/->vector (ds/column test-ds "SalePrice"))
+        _ (println (keys model))
         predictions (ml/predict model test-ds)
         loss-value (loss/rmse predictions labels)]
     (is (< loss-value 0.20))))
