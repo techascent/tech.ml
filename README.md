@@ -1,4 +1,4 @@
-# tech.ml-base
+# tech.ml
 
 [![Clojars Project](https://img.shields.io/clojars/v/techascent/tech.ml-base.svg)](https://clojars.org/techascent/tech.ml-base)
 
