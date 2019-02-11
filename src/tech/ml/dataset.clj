@@ -294,14 +294,16 @@ the correct type."
 
 
 (defn ->dataset
-  [dataset {:keys [table-name]
-            :or {table-name "_unnamed"}
-            :as options}]
-  (if (satisfies? ds-proto/PColumnarDataset dataset)
-    dataset
-    (if (and (sequential? dataset)
-             (or (not (seq dataset))
-                 (map? (first dataset))))
-      (map-seq->dataset dataset options)
-      (throw (ex-info "Dataset appears to be empty or not convertible to a dataset"
-                      {:dataset dataset})))))
+  ([dataset {:keys [table-name]
+             :or {table-name "_unnamed"}
+             :as options}]
+   (if (satisfies? ds-proto/PColumnarDataset dataset)
+     dataset
+     (if (and (sequential? dataset)
+              (or (not (seq dataset))
+                  (map? (first dataset))))
+       (map-seq->dataset dataset options)
+       (throw (ex-info "Dataset appears to be empty or not convertible to a dataset"
+                       {:dataset dataset})))))
+  ([dataset]
+   (->dataset dataset {})))

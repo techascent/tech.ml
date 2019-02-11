@@ -215,7 +215,7 @@
                    [string->number string?]
                    ;;Range numeric data to -1 1
                    [range-scaler (not categorical?)]]
-        src-ds (ds/->dataset (mapseq-fruit-dataset))
+        src-ds (ds/->dataset (mapseq-fruit-dataset) {})
 
         {:keys [dataset pipeline options]}
         (etl/apply-pipeline src-ds pipeline
