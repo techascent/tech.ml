@@ -1,4 +1,4 @@
-(ns tech.svm-test
+(ns tech.libs.svm-test
   (:require [clojure.test :refer :all]
             [tech.libs.svm :as svm]
             [tech.verify.ml.regression :as verify-regression]

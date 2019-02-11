@@ -28,23 +28,29 @@
   [dataset col-filter]
   (cond
     (sequential? col-filter)
-    (let [filter-fn (-> (first col-filter)
-                        name
-                        keyword)]
-      (execute-col-filter-fn dataset filter-fn (rest col-filter)))
+    (if (seq col-filter)
+      (let [filter-fn (-> (first col-filter)
+                          name
+                          keyword)]
+        (execute-col-filter-fn dataset filter-fn (rest col-filter)))
+      [])
+    (set? col-filter)
+    col-filter
     (or (symbol? col-filter) (keyword? col-filter))
     (execute-col-filter-fn dataset (keyword (name col-filter)) [])))
 
 
 (defn select-columns
   [dataset col-selector]
+  (println col-selector)
   (cond
     (string? col-selector)
     [col-selector]
     (keyword? col-selector)
     [col-selector]
     (sequential? col-selector)
-    (if (string? (first col-selector))
+    (if (or (string? (first col-selector))
+            (keyword? (first col-selector)))
       col-selector
       (execute-column-filter dataset col-selector))
     (set? col-selector)
@@ -125,5 +131,5 @@
 (register-column-filter!
  :*
  (fn [dataset & args]
-   (->> (process-filter-args args)
+   (->> (process-filter-args dataset args)
         (map ds-col/column-name))))

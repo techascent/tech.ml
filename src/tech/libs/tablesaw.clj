@@ -267,7 +267,7 @@
 
 (defn tablesaw-columns->tablesaw-dataset
   [table-name columns]
-  (columnar-dataset/->GenericColumnarDataset
+  (columnar-dataset/make-dataset
    table-name
    (if (or (sequential? columns)
            (instance? java.util.List columns))

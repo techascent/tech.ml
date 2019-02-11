@@ -47,13 +47,13 @@
                      "GarageCond"
                      "PoolQC"]   ["Ex" "Gd" "TA" "Fa" "Po" "NA"]]
     [set-attribute ["MSSubClass" "OverallQual" "OverallCond"] :categorical? true]
-    [string->number "HasMasVnr" {"BrkCmn" 1
+    [string->number "MasVnrType" {"BrkCmn" 1
                                  "BrkFace" 1
                                  "CBlock" 1
                                  "Stone" 1
                                  "None" 0
                                  "NA" -1}]
-    [string->number "BoughtOffPlan" {"Abnorml" 0
+    [string->number "SaleCondition" {"Abnorml" 0
                                      "Alloca" 0
                                      "AdjLand" 0
                                      "Family" 0
@@ -251,4 +251,13 @@
                         (let [{col-min :min
                                col-max :max} (-> (ds/column dataset colname)
                                                  (ds-col/stats [:min :max]))]
-                          [(long col-min) (long col-max)]))))))))
+                          [(long col-min) (long col-max)]))))))
+
+    ;;Concatenation should work
+
+    (is (= (mapv (comp name :fruit-name)
+                 (concat (mapseq-fruit-dataset)
+                         (mapseq-fruit-dataset)))
+           (->> (-> (ds/ds-concat dataset dataset)
+                    (ds/->flyweight :label-map (get options :label-map)))
+                (mapv :fruit-name))))))

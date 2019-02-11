@@ -1,129 +1,104 @@
 (ns tech.ml.svm-datasets
   "These are datasets from this page:
   https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/"
-  (:require [clojure.string :as s]))
+  (:require [clojure.string :as s]
+            [tech.ml.dataset.etl :as etl]
+            [tech.ml.dataset.svm :as svm]))
 
 
-(def test-line "1 1:2.617300e+01 2:5.886700e+01 3:-1.894697e-01 4:1.251225e+02")
+(def basic-svm-pipeline '[[string->number string?]
+                          [replace-missing * 0]
+                          ;;scale everything [-1 1]
+                          [range-scaler [not categorical?]]])
+
+(def profile-pipeline '[[range-scaler [not categorical?]]])
 
 
-(defn- parse-line
-  [line]
-  (let [parse (s/split line #"\s+")
-        label (Double/parseDouble (first parse))
-        idx-val-pairs (->> (rest parse)
-                           (map (fn [item]
-                                  (let [[idx val] (s/split item #":")]
-                                    [(Long/parseLong idx)
-                                     (Double/parseDouble val)]))))]
-    {:label label
-     :features (->> idx-val-pairs
-                    (into {}))
-     :max-idx (apply max (map first idx-val-pairs))
-     :min-idx (apply min (map first idx-val-pairs))}))
+(defn profile-range-scaler
+  [dataset]
+  (dotimes [iter 100]
+    (time
+     (etl/apply-pipeline dataset profile-pipeline {:target :label})))
+  :ok)
 
 
-(defn parse-svm-file
-  "Parse an svm file and generate a dataset of {:features :label}.  Always
-  represents result as a dense matrix; no support for sparse datasets."
-  [fname & [label-map]]
-  (let [f-data (slurp fname)
-        [labels features min-idx max-idx]
-        (->> (s/split f-data #"\n")
-             (pmap parse-line)
-             (reduce
-              (fn [[labels features min-idx max-idx] next-line]
-                (let [{label :label
-                       line-feature :features
-                       line-max-idx :max-idx
-                       line-min-idx :min-idx
-                       :as item} next-line]
-                  [(conj labels label)
-                   (conj features line-feature)
-                   (if (and min-idx
-                            (< min-idx line-min-idx))
-                     min-idx
-                     line-min-idx)
-                   (if (and max-idx
-                            (> max-idx line-max-idx))
-                     max-idx
-                     line-max-idx)]))
-              [[] [] nil nil]))
-        min-idx (long min-idx)
-        max-idx (long max-idx)
-        num-items (+ 1 (- max-idx min-idx))]
-    (map (fn [label features]
-           (let [double-ary (double-array num-items)]
-             (doseq [[idx val] features]
-               (aset double-ary (- (long idx)
-                                   min-idx)
-                     (double val)))
-             {:label (if label-map
-                       (get label-map (double label))
-                       (double label))
-              :features double-ary}))
-         labels features)))
+(defn parse-svm-files
+  [train-fname label-map & [test-fname]]
+  (let [{train-ds :dataset
+         options :options
+         pipeline :pipeline}
+        (-> (svm/parse-svm-file train-fname :label-map label-map)
+            :dataset
+            (etl/apply-pipeline basic-svm-pipeline {:target :label}))
+        _ (println "train-finished")
+        test-ds (when test-fname
+                  (-> (svm/parse-svm-file test-fname :label-map label-map)
+                      :dataset
+                      (etl/apply-pipeline pipeline {:target :label
+                                                    :recorded? true})))]
+    (println "test-finished")
+
+    (merge {:train-ds train-ds
+            :options options}
+           (when test-ds {:test-ds test-ds}))))
+
 
 
 (defn leukemia
   "Low N high feature space dataset"
   []
-  (let [label-map {-1.0 :negative
-                   1.0 :positive}]
-    {:train-ds (parse-svm-file "data/leu" label-map)
-     :test-ds (parse-svm-file "data/leu.t" label-map)
-     :type :classification
-     :name :leukemia}))
+  (merge (parse-svm-files "data/leu" {-1.0 :negative
+                                      1.0 :positive}
+                          "data/leu.t")
+         {:type :classification
+          :name :leukemia}))
 
 
 (defn duke-breast-cancer
   "Low N high feature space dataset"
   []
-  (let [label-map {-1.0 :negative
-                   1.0 :positive}]
-    {:train-ds (parse-svm-file "data/duke.tr" label-map)
-     :test-ds (parse-svm-file "data/duke.val" label-map)
-     :type :classification
-     :name :duke-breast-cancer}))
+  (merge (parse-svm-files "data/duke.tr" {-1.0 :negative
+                                          1.0 :positive}
+                          "data/duke.val")
+         {:type :classification
+          :name :duke-breast-cancer}))
 
 
 (defn test-ds-1
   []
-  (let [label-map {0.0 :negative
-                   1.0 :positive}]
-    {:train-ds (parse-svm-file "data/train.1" label-map)
-     :test-ds (parse-svm-file "data/test.1" label-map)
-     :type :classification
-     :name :test-dataset-1}))
+  (merge (parse-svm-files "data/train.1" {0.0 :negative
+                                          1.0 :positive}
+                          "data/test.1")
+         {:type :classification
+          :name :test-dataset-1}))
 
 
 (defn test-ds-2
   []
-  (let [label-map {1.0 :first
-                   2.0 :second
-                   3.0 :third}]
-    {:type :classification
-     :train-ds (parse-svm-file "data/train.2" label-map)
-     :name :test-dataset-2}))
+  (merge (parse-svm-files "data/train.2" {1.0 :first
+                                          2.0 :second
+                                          3.0 :third})
+         {:type :classification
+          :name :test-dataset-2}))
 
 
 (defn test-ds-3
   []
-  (let [label-map {-1.0 :negative
-                   1.0 :positive}]
-    {:type :classification
-     :train-ds (parse-svm-file "data/train.3" label-map)
-     :test-ds (parse-svm-file "data/test.3" label-map)
-     :name :test-dataset-3}))
+  (merge (parse-svm-files "data/train.3" {-1.0 :negative
+                                          1.0 :positive}
+                          "data/test.3")
+         {:type :classification
+          :name :test-dataset-3}))
 
 
 
-(defn all-datasets
-  []
-  (->> [leukemia
-        duke-breast-cancer
-        test-ds-1
-        test-ds-2
-        test-ds-3]
-       (map (fn [ds-fn]
-              (ds-fn)))))
+(def all-datasets
+  (memoize
+   (fn []
+     (->> [leukemia
+           duke-breast-cancer
+           test-ds-1
+           test-ds-2
+           test-ds-3]
+          (map (fn [ds-fn]
+                 (ds-fn)))))))

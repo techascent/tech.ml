@@ -115,7 +115,9 @@ May be a java array or something else.  Likely to error on missing."
   "Set values in the column returning a new column with same name and datatype.  Values
 which cannot be simply coerced to the datatype are an error."
   [col idx-val-seq]
-  (col-proto/set-values col idx-val-seq))
+  (if (seq idx-val-seq)
+    (col-proto/set-values col idx-val-seq)
+    col))
 
 
 (defn select

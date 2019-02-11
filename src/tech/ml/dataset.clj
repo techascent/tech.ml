@@ -119,7 +119,39 @@ the correct type."
        (select dataset :all)))
 
 
+(defn ds-concat
+  [dataset & other-datasets]
+  (let [column-list (->> (concat [dataset] (remove nil? other-datasets))
+                         (mapcat (fn [dataset]
+                                   (->> (columns dataset)
+                                        (mapv (fn [col]
+                                                (assoc (col-proto/metadata col)
+                                                       :column
+                                                       col
+                                                       :table-name (dataset-name dataset)))))))
+                         (group-by :name))]
+    (when-not (= 1 (count (->> (vals column-list)
+                               (map count)
+                               distinct)))
+      (throw (ex-info "Dataset is missing a column" {})))
+    (->> column-list
+         (mapv (fn [[colname columns]]
+                 (let [columns (map :column columns)
+                       newcol-ecount (apply + 0 (map m/ecount columns))
+                       first-col (first columns)
+                       new-col (col-proto/new-column first-col
+                                                     (dtype/get-datatype first-col)
+                                                     newcol-ecount
+                                                     (col-proto/metadata first-col))]
+                   (dtype/copy-raw->item! (map col-proto/column-values columns)
+                                          new-col 0
+                                          {:unchecked? true})
+                   new-col)))
+         (ds-proto/from-prototype dataset (dataset-name dataset)))))
+
+
 (defn ds-map
+  "Note this returns a sequence, not a dataset."
   [dataset map-fn & [column-name-seq]]
   (->> (index-value-seq (select dataset (or column-name-seq :all) :all))
        (map (fn [[idx col-values]]

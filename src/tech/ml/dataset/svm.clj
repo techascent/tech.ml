@@ -24,8 +24,7 @@
 (defn parse-svm-file
   "Parse an svm file and generate a dataset of {:features :label}.  Always
   represents result as a dense matrix; no support for sparse datasets."
-  [fname & {:keys [dense? label-map]
-            :or {dense? true}}]
+  [fname & {:keys [label-map]}]
   (let [f-data (slurp fname)
         [labels features min-idx max-idx]
         (->> (s/split f-data #"\n")
@@ -37,8 +36,16 @@
                        line-max-idx :max-idx
                        line-min-idx :min-idx
                        :as item} next-line]
-                  [(conj labels label)
-                   (conj features line-feature)
+                  [(conj labels (if label-map
+                                  (if-let [label-value (get label-map label)]
+                                    label-value
+                                    (throw (ex-info (format "Failed to find label for value: %s" label)
+                                                    {:label-map label-map})))
+                                  label))
+                   (conj features (->> line-feature
+                                       (map (fn [[k v]]
+                                              [(str k) v]))
+                                       (into {})))
                    (if (and min-idx
                             (< min-idx line-min-idx))
                      min-idx
@@ -55,16 +62,5 @@
      :max-idx max-idx
      :feature-ecount (+ 1 (- max-idx min-idx))
      :dataset (map (fn [label features]
-                     (if dense?
-                       (let [double-ary (double-array num-items)]
-                         (doseq [[idx val] features]
-                           (aset double-ary (- (long idx)
-                                               min-idx)
-                                 (double val)))
-                         {:label (if label-map
-                                   (get label-map (double label))
-                                   (double label))
-                          :features double-ary})
-                       {:label label
-                        :features features}))
+                     (assoc features :label label))
                    labels features)}))

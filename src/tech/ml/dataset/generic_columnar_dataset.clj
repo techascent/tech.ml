@@ -6,63 +6,54 @@
             [clojure.set :as c-set]))
 
 
-(defrecord GenericColumnarDataset [table-name columns]
+(declare make-dataset)
+
+
+(defrecord GenericColumnarDataset [table-name column-names colmap]
   ds-proto/PColumnarDataset
   (dataset-name [dataset] table-name)
   (maybe-column [dataset column-name]
-    (->> columns
-         (filter #(= column-name (ds-col/column-name %)))
-         first))
+    (get colmap column-name))
 
-  (columns [dataset] columns)
+  (columns [dataset] (mapv (partial get colmap) column-names))
 
   (add-column [dataset col]
-    (let [existing-names (set (map ds-col/column-name columns))
+    (let [existing-names (set column-names)
           new-col-name (ds-col/column-name col)]
       (when-let [existing (existing-names new-col-name)]
         (throw (ex-info (format "Column of same name (%s) already exists in columns"
                                 new-col-name)
                         {:existing-columns existing-names
                          :column-name new-col-name})))
-      (->GenericColumnarDataset
+
+      (make-dataset
        table-name
-       (concat columns [col]))))
+       (concat (ds-proto/columns dataset) [col]))))
 
   (remove-column [dataset col-name]
-    (->GenericColumnarDataset table-name
-                       (->> columns
-                            (remove #(= (ds-col/column-name %)
-                                        col-name)))))
+    (make-dataset table-name
+                  (->> (ds-proto/columns dataset)
+                       (remove #(= (ds-col/column-name %)
+                                   col-name)))))
 
   (update-column [dataset col-name col-fn]
+    (when-not (contains? colmap col-name)
+      (throw (ex-info (format "Failed to find column %s" col-name)
+                      {:col-name col-name
+                       :col-names (keys colmap)})))
     (->GenericColumnarDataset
      table-name
-     (->> columns
-          ;;Mapv to force failures in this function.
-          (mapv (fn [col]
-                  (if (= col-name (ds-col/column-name col))
-                    (if-let [new-col (col-fn col)]
-                      (do
-                        (when-not (ds-col/is-column? new-col)
-                          (throw (ex-info (format "Column returned does not satisfy column protocols %s."
-                                                  (type new-col))
-                                          {})))
-                        new-col)
-                      (throw (ex-info (format "No column returned from column function %s."
-                                              col-fn) {})))
-                    col))))))
+     column-names
+     (update colmap col-name col-fn)))
 
   (add-or-update-column [dataset column]
-    (let [col-name (ds-col/column-name column)
-          found-name (->> (map ds-col/column-name columns)
-                          (filter #(= col-name %))
-                          first)]
-      (if found-name
+    (let [col-name (ds-col/column-name column)]
+      (if (contains? colmap col-name)
         (ds/update-column dataset col-name (constantly column))
         (ds/add-column dataset column))))
 
   (select [dataset column-name-seq index-seq]
-    (let [all-names (map ds-col/column-name columns)
+    (let [all-names column-names
           all-name-set (set all-names)
           column-name-seq (if (= :all column-name-seq)
                             all-names
@@ -78,7 +69,7 @@
           indexes (if (= :all index-seq)
                     nil
                     (int-array index-seq))]
-      (->GenericColumnarDataset
+      (make-dataset
        table-name
        (->> column-name-seq
             (map (fn [col-name]
@@ -89,26 +80,26 @@
             vec))))
 
   (index-value-seq [dataset]
-    (let [col-value-seq (->> columns
+    (let [col-value-seq (->> (ds-proto/columns dataset)
                              (mapv (fn [col]
                                      (ds-col/column-values col))))]
       (->> (apply map vector col-value-seq)
            (map-indexed vector))))
 
   (supported-stats [dataset]
-    (ds-col/supported-stats (first columns)))
+    (ds-col/supported-stats (first (vals colmap))))
 
   (from-prototype [dataset table-name column-seq]
-    (->GenericColumnarDataset table-name column-seq))
+    (make-dataset table-name column-seq))
 
 
   mp/PDimensionInfo
   (dimensionality [m] (count (mp/get-shape m)))
   (get-shape [m]
-    [(if-let [first-col (first columns)]
+    [(if-let [first-col (first (vals colmap))]
        (mp/element-count first-col)
        0)
-     (count columns)])
+     (count column-names)])
   (is-scalar? [m] false)
   (is-vector? [m] true)
   (dimension-count [m dimension-number]
@@ -118,3 +109,12 @@
         (throw (ex-info "Array does not have specific dimension"
                         {:dimension-number dimension-number
                          :shape shape}))))))
+
+
+(defn make-dataset
+  [table-name column-seq]
+  (->GenericColumnarDataset table-name
+                            (map ds-col/column-name column-seq)
+                            (->> column-seq
+                                 (map (juxt ds-col/column-name identity))
+                                 (into {}))))

@@ -5,7 +5,9 @@
             [tech.datatype :as dtype]
             [tech.ml.dataset.etl.column-filters :as column-filters]
             [tech.ml.dataset.etl.defaults :refer [etl-datatype]]
-            [tech.ml.dataset.etl.math-ops :as math-ops])
+            [tech.ml.dataset.etl.math-ops :as math-ops]
+            [tech.ml.utils :as utils]
+            [tech.compute.tensor :as ct])
   (:refer-clojure :exclude [remove])
   (:import [tech.ml.protocols.etl
             PETLSingleColumnOperator
@@ -52,8 +54,9 @@
                                                  (:label-map context))
                                          options)])
                             [context options])
-        dataset (etl-proto/perform-etl-columns
-                 op-impl dataset col-seq op-args context)]
+        _ (println op)
+        dataset (time (etl-proto/perform-etl-columns
+                       op-impl dataset col-seq op-args context))]
     {:dataset dataset
      :options options
      :pipeline (conj pipeline {:operation (->> (concat [(first op) col-seq]
@@ -111,8 +114,8 @@
    (fn [col]
      (let [missing-indexes (ds-col/missing col)]
        (ds-col/set-values col (map vector
-                                      (seq missing-indexes)
-                                      (repeat (:missing-value context))))))))
+                                   (seq missing-indexes)
+                                   (repeat (:missing-value context))))))))
 
 
 (defn- make-string-table-from-args
@@ -261,25 +264,75 @@
   (operator-eval-expr dataset column-name (first op-args)))
 
 
-(def-etl-operator
-  range-scaler
-  (-> (ds/column dataset column-name)
-      (ds-col/stats [:min :max]))
+(register-etl-operator!
+ :range-scaler
+  (reify PETLMultipleColumnOperator
+    (build-etl-context-columns [op dataset column-name-seq op-args]
+      (->> column-name-seq
+           (map (fn [column-name]
+                  [column-name
+                   (-> (ds/column dataset column-name)
+                       (ds-col/stats [:min :max]))]))
+           (into {})))
 
-  (let [{column-min :min
-         column-max :max} context
-        column-min (double column-min)
-        column-max (double column-max)
-        column-range (- column-min column-max)
-        [range-min range-max] (if (seq op-args)
-                                (first op-args)
-                                [-1 1])
-        range-min (double range-min)
-        range-max (double range-max)
-        target-range (- range-max
-                        range-min)
-        range-multiplier (/ target-range
-                            column-range)]
-    (operator-eval-expr dataset column-name [:- [:* [:- [:col] column-min]
-                                                 range-multiplier]
-                                             range-min])))
+    (perform-etl-columns [op dataset column-name-seq op-args context]
+      (let [src-data (ds/select dataset column-name-seq :all)
+            [src-rows src-cols] (ct/shape src-data)
+            colseq (ds/columns src-data)
+            etl-dtype (etl-datatype)
+            ;;Storing data column-major so the row is incremention fast.
+            backing-store (ct/new-tensor [src-cols src-rows]
+                                         :datatype etl-dtype
+                                         :init-value nil)
+            _ (dtype/copy-raw->item! (->> colseq
+                                          (map (fn [col]
+                                                 (when-not (= (int src-rows) (ct/ecount col))
+                                                   (throw (ex-info "Column is wrong size; ragged tables not supported." {})))
+                                                 (ds-col/column-values col))))
+                                     (ct/tensor->buffer backing-store)
+                                     0 {:unchecked? true})
+            context-map-seq (map #(get context (ds-col/column-name %)) colseq)
+            min-values (ct/->tensor (mapv :min context-map-seq) :datatype etl-dtype)
+            max-values (ct/->tensor (mapv :max context-map-seq) :datatype etl-dtype)
+            col-ranges (ct/binary-op! (ct/clone min-values) 1.0 max-values 1.0 min-values :-)
+            [range-min range-max] (if (seq op-args)
+                                    (first op-args)
+                                    [-1 1])
+            range-min (double range-min)
+            range-max (double range-max)
+            target-range (- range-max
+                            range-min)
+            range-multiplier (ct/binary-op! col-ranges 1.0 target-range 1.0 col-ranges :/)]
+
+        ;;Use broadcasting to apply operation columnwise to entire table.
+        ;;Set min to 0
+        (ct/binary-op! backing-store
+                       1.0 backing-store
+                       1.0 (ct/in-place-reshape min-values [src-cols 1])
+                       :-)
+
+        ;;shift range to be desired range.
+        (ct/binary-op! backing-store
+                       1.0 backing-store
+                       1.0 (ct/in-place-reshape range-multiplier [src-cols 1])
+                       :*)
+
+        ;;Set min to be desired min.
+        (ct/binary-op! backing-store
+                       1.0 backing-store
+                       1.0 range-min
+                       :+)
+
+        ;;apply result back to main table
+        (->> colseq
+             (map-indexed vector)
+             (reduce (fn [dataset [col-idx col]]
+                       (let [colname (ds-col/column-name col)]
+                         (ds/update-column
+                          dataset colname
+                          (fn [incoming-col]
+                            (let [new-col (ds-col/new-column incoming-col etl-dtype src-rows
+                                                             (dissoc (ds-col/metadata incoming-col)
+                                                                     :categorical?))]
+                              (ct/assign! new-col (ct/select backing-store col-idx :all)))))))
+                     dataset))))))
