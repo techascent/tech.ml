@@ -317,7 +317,7 @@
 
         n-entries (first (dtype/shape x-data))
         ^doubles y-data (first (dtype/copy-raw->item!
-                                (map ::dataset/label row-major-dataset)
+                                (map :label row-major-dataset)
                                 (dtype/make-array-of-type :float64 n-entries)
                                 0))
         data-constructor-arguments [{:type x-datatype
@@ -334,9 +334,6 @@
 (defrecord SmileRegression []
   ml-proto/PMLSystem
   (system-name [_] :smile.regression)
-  (coalesce-options [system _]
-    {:container-type dtype/make-array-of-type
-     :datatype :float64})
   (gridsearch-options [system options]
     (let [entry-metadata (model-type->regression-model (model/options->model-type options))]
       (if-let [retval (:gridsearch-options entry-metadata)]
@@ -344,14 +341,15 @@
         (throw (ex-info "Model type does not support auto gridsearch yet"
                         {:entry-metadata entry-metadata})))))
   (train [system options dataset]
-    (let [row-major-dataset (dataset/->row-major )
+    (let [row-major-dataset (dataset/->row-major dataset options)
           entry-metadata (model-type->regression-model (model/options->model-type options))]
       (-> (if (contains? (:attributes entry-metadata) :online)
             (train-online options entry-metadata row-major-dataset)
             (train-block options entry-metadata row-major-dataset))
           model/model->byte-array)))
   (predict [system options trained-model-bytes dataset]
-    (let [^Regression trained-model (model/byte-array->model trained-model-bytes)]
+    (let [row-major-dataset (dataset/->row-major dataset options)
+          ^Regression trained-model (model/byte-array->model trained-model-bytes)]
       (->> row-major-dataset
            (map #(double (.predict trained-model ^doubles (:features %))))
            (into-array)))))
