@@ -116,12 +116,12 @@
 
     (let [exact-columns (tablesaw/map-seq->tablesaw-dataset
                          inference-dataset
-                         {:column-definitions (:dataset-column-metadata options)})
+                         {:column-definitions (get-in options [:dataset-column-metadata :pre-pipeline])})
           ;;Just checking that this works at all..
           autoscan-columns (tablesaw/map-seq->tablesaw-dataset inference-dataset {})]
 
       ;;And the definition of exact is...
-      (is (= (mapv :datatype (->> (:dataset-column-metadata options)
+      (is (= (mapv :datatype (->> (get-in options [:dataset-column-metadata :pre-pipeline])
                                   (sort-by :name)))
              (->> (ds/columns exact-columns)
                   (map ds-col/metadata)

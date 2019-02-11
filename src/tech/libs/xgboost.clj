@@ -135,13 +135,8 @@
 (defn dataset->labeled-point-iterator
   "Create an iterator to labeled points from a possibly quite large
   sequence of maps.  Sets expected length to length of first entry"
-  ^Iterator [dataset feature-keys label-keys & {:keys [weight group]
-                                                :or {weight 1.0
-                                                     group -1}}]
-  (->> (dataset/->row-major dataset
-                            {:features feature-keys
-                             :label label-keys}
-                            {:datatype :float32})
+  ^Iterator [dataset options]
+  (->> (dataset/->row-major dataset (assoc options :datatype :float32))
        ;;dataset is now coalesced into float arrays for the values
        ;;and a single float for the label (if it exists).
        (map (fn [{:keys [:features :label]}]
@@ -152,8 +147,8 @@
 (defn dataset->dmatrix
   "Dataset is a sequence of maps.  Each contains a feature key.
   Returns a dmatrix."
-  ^DMatrix [dataset feature-keys label-keys]
-  (DMatrix. (dataset->labeled-point-iterator dataset feature-keys label-keys)
+  ^DMatrix [dataset options]
+  (DMatrix. (dataset->labeled-point-iterator dataset options)
             nil))
 
 
@@ -184,13 +179,13 @@
      :alpha (ml-gs/exp [0.0001 5])})
   (train [_ options dataset]
     (let [objective (get-objective options)
-          train-dmat (dataset->dmatrix dataset (:feature-columns options) (:label-columns options))
+          train-dmat (dataset->dmatrix dataset options)
           watches (:watches options)
           round (or (:round options) 25)
           early-stopping-round (when (:early-stopping-round options)
                                  (int (:early-stopping-round options)))
           label-map (when (multiclass-objective? objective)
-                      (dataset/label-inverse-map options))
+                      (dataset/options->label-map options))
           params (->> (-> (dissoc options :model-type :watches)
                           (assoc :objective objective))
                       ;;Adding in some defaults
@@ -224,10 +219,10 @@
 
   (predict [_ options model dataset]
     (let [model (XGBoost/loadModel (ByteArrayInputStream. model))
-          retval (->> (dataset->dmatrix dataset (:feature-columns options) nil)
+          retval (->> (dataset->dmatrix dataset (dissoc options :label-columns))
                       (.predict model))]
       (if (= "multi:softprob" (get-objective options))
-        (let [inverse-label-map (dataset/label-inverse-map options)
+        (let [inverse-label-map (dataset/options->label-inverse-map options)
               ordered-labels (->> inverse-label-map
                                   (sort-by first)
                                   (mapv second))

@@ -26,7 +26,8 @@
                                  ;;Get datatype of all columns initially and full set of columns.
                                  (assoc options
                                         :dataset-column-metadata
-                                        (mapv ds-col/metadata (ds/columns dataset)))]
+                                        {:pre-pipeline
+                                         (mapv ds-col/metadata (ds/columns dataset))})]
                                 ;;No change for inference case
                                 [dataset options])
             {:keys [options dataset] :as retval}
@@ -38,6 +39,10 @@
                                               (set target-columns))]
 
         (assoc retval :options
-               (assoc options
-                      :feature-columns feature-columns
-                      :label-columns target-columns))))))
+               (-> options
+                   ;;The column sequence cannot be a set as when you train
+                   ;;the model is tightly bound to the sequence of columns
+                   (assoc :feature-columns (vec (sort feature-columns))
+                          :label-columns (vec (sort target-columns)))
+                   (assoc-in [:dataset-column-metadata :post-pipeline]
+                             (mapv ds-col/metadata (ds/columns dataset)))))))))

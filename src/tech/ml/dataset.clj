@@ -212,46 +212,93 @@ the correct type."
 (defn ->row-major
   "Given a dataset and a map if desired key names to sequences of columns,
   produce a sequence of maps where each key name points to contiguous vector
-  composed of the column values concatenated."
-  [dataset key-colname-seq-map {:keys [datatype]
-                                :or {datatype :float64}}]
-  (let [key-val-seq (seq key-colname-seq-map)
-        all-col-names (mapcat second key-val-seq)
-        item-col-count-map (->> key-val-seq
-                                (map (fn [[item-k item-col-seq]]
-                                       (when (seq item-col-seq)
-                                         [item-k (count item-col-seq)])))
-                                (remove nil?)
-                                vec)]
-    (ds-map dataset
-            (fn [& column-values]
-              (->> item-col-count-map
-                   (reduce (fn [[flyweight column-values] [item-key item-count]]
-                             (let [contiguous-array (dtype/make-array-of-type datatype (take item-count column-values))]
-                               (when-not (= (dtype/ecount contiguous-array)
-                                            (long item-count))
-                                 (throw (ex-info "Failed to get correct number of items" {:item-key item-key})))
-                               [(assoc flyweight item-key contiguous-array)
-                                (drop item-count column-values)]))
-                           [{} column-values])
-                   first))
-            all-col-names)))
+  composed of the column values concatenated.
+  If colname-seq-map is not provided then each row defaults to
+  {:features [feature-columns]
+   :label [label-columns]}"
+  ([dataset key-colname-seq-map {:keys [datatype]
+                                 :or {datatype :float64}}]
+   (let [key-val-seq (seq key-colname-seq-map)
+         all-col-names (mapcat second key-val-seq)
+         item-col-count-map (->> key-val-seq
+                                 (map (fn [[item-k item-col-seq]]
+                                        (when (seq item-col-seq)
+                                          [item-k (count item-col-seq)])))
+                                 (remove nil?)
+                                 vec)]
+     (ds-map dataset
+             (fn [& column-values]
+               (->> item-col-count-map
+                    (reduce (fn [[flyweight column-values] [item-key item-count]]
+                              (let [contiguous-array (dtype/make-array-of-type datatype (take item-count column-values))]
+                                (when-not (= (dtype/ecount contiguous-array)
+                                             (long item-count))
+                                  (throw (ex-info "Failed to get correct number of items" {:item-key item-key})))
+                                [(assoc flyweight item-key contiguous-array)
+                                 (drop item-count column-values)]))
+                            [{} column-values])
+                    first))
+             all-col-names)))
+  ([dataset options]
+   (->row-major dataset (merge {:features (get options :feature-columns)}
+                               (when (seq (get options :label-columns))
+                                 {:label (get options :label-columns)}))
+                options)))
 
 
-(defn label-inverse-map
-  "Given options generated during ETL operations and annotated with :label-columns
-  sequence container 1 label column, generate a reverse map that maps from a dataset
-  value back to the label that generated that value."
+
+
+(defn column-name->label-map
+  [column-name options]
+  (if-let [col-label-map (get-in options [:label-map column-name])]
+    col-label-map
+    (throw (ex-info (format "Failed to find label map for column %s"
+                            column-name)
+                    {:label-column column-name
+                     :label-map-keys (keys (:label-map options))}))))
+
+
+(defn options->label-map
   [{:keys [label-columns label-map] :as options}]
   (when-not (= 1 (count label-columns))
     (throw (ex-info (format "Multiple label columns found: %s" label-columns)
                     {:label-columns label-columns})))
-  (if-let [col-label-map (get label-map (first label-columns))]
-    (c-set/map-invert col-label-map)
-    (throw (ex-info (format "Failed to find label map for column %s"
-                            (first label-columns))
-                    {:label-column (first label-columns)
-                     :label-map-keys (keys label-map)}))))
+  (column-name->label-map (first label-columns) options))
+
+
+(defn options->label-inverse-map
+  "Given options generated during ETL operations and annotated with :label-columns
+  sequence container 1 label column, generate a reverse map that maps from a dataset
+  value back to the label that generated that value."
+  [options]
+  (c-set/map-invert (options->label-map options)))
+
+
+(defn options->num-classes
+  "Given a dataset and correctly built options from pipeline operations,
+  return the number of classes used for the label.  Error if not classification
+  dataset."
+  ^long [options]
+  (count (options->label-map options)))
+
+
+(defn options->feature-ecount
+  "When columns aren't scalars then this will change.
+  For now, just the number of feature columns."
+  ^long [options]
+  (count (:feature-columns options)))
+
+
+(defn options->model-type
+  "Check the label column after dataset processing.
+  Return either
+  :regression
+  :classification"
+  [{:keys [label-columns] :as options}]
+  (if (or (not= 1 (count label-columns))
+          (nil? (get-in options [:label-map (first label-columns)])))
+    :regression
+    :classification))
 
 
 (defn labels
