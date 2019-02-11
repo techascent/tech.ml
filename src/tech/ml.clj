@@ -10,6 +10,21 @@
   (:import [java.util UUID]))
 
 
+(defn- normalize-column-seq
+  [col-seq]
+  (cond
+    (sequential? col-seq)
+    (vec col-seq)
+    (set? col-seq)
+    (vec col-seq)
+    (or (keyword? col-seq)
+        (string? col-seq))
+    [col-seq]
+    :else
+    (throw (ex-info (format "Failed to normalize column sequence %s" col-seq)
+                    {:column-seq col-seq}))))
+
+
 (defn train
   "Train a model.  Returns a map of:
   {:model - direct result of system-proto/train
@@ -23,14 +38,14 @@
      (throw (ex-info "Must be at least one label column to train"
                      {:label-columns (get options :label-columns)})))
    (let [ml-system (registry/system (:model-type options))
-         model (system-proto/train ml-system options (dataset/->dataset dataset))]
+         model (system-proto/train ml-system options (dataset/->dataset dataset {}))]
      {:model model
       :options options
       :id (UUID/randomUUID)}))
   ([options feature-columns label-columns dataset]
    (train (assoc options
-                 :feature-columns feature-columns
-                 :label-columns label-columns)
+                 :feature-columns (normalize-column-seq feature-columns)
+                 :label-columns (normalize-column-seq label-columns))
           dataset)))
 
 
@@ -70,21 +85,22 @@
   Page 242, https://web.stanford.edu/~hastie/ElemStatLearn/.
   Result is the best train result annoted with the average loss of the group
   and total train and predict times."
-  [options predict-fn loss-fn dataset-seq]
+  [options loss-fn dataset-seq]
+  (when-not (seq dataset-seq)
+    (throw (ex-info "Empty dataset sequence" {:dataset-seq dataset-seq})))
   (let [train-predict-data
         (->> (dataset-seq->dataset-model-seq options dataset-seq)
              (map (fn [{:keys [test-ds options model] :as train-result}]
                     (let [{predictions :retval
                            predict-time :milliseconds}
-                          (utils/time-section (predict-fn train-result test-ds))
-                          options (:options model)
+                          (utils/time-section (predict train-result test-ds))
                           labels (dataset/labels test-ds options)]
                       (merge (dissoc train-result :test-ds)
                              {:predict-time predict-time
                               :loss (loss-fn predictions labels)})))))
         ds-count (count dataset-seq)
         ave-fn #(* (/ 1.0 ds-count) %)
-        total-seq #(apply + %)
+        total-seq #(apply + 0 %)
         total-loss (total-seq (map :loss train-predict-data))
         total-predict (total-seq (map :predict-time train-predict-data))
         total-train (total-seq (map :train-time train-predict-data))]
@@ -123,14 +139,9 @@ first try."
          k-fold 5}
     :as options}
    loss-fn dataset]
-  ;;Scale the dataset once; scanning it to find ranges of things is expensive.
-  ;;You are free, however, to provide your own scale map in the options.
-  (let [dataset-seq (if (and k-fold
-                             (> (int k-fold) 0))
-                      (dataset/->k-fold-datasets k-fold options dataset)
-                      [(dataset/->train-test-split dataset)])
-        train-fn #(train %1 %2)
-        predict-fn predict]
+  (let [dataset-seq (if (and k-fold (> (int k-fold) 1))
+                      (dataset/->k-fold-datasets dataset k-fold options)
+                      [(dataset/->train-test-split dataset options)])]
     (->> (ml-gs/gridsearch options)
          (take gridsearch-depth)
          (parallel/queued-pmap
@@ -138,7 +149,6 @@ first try."
           (fn [options-map]
             (try
               (average-prediction-error options-map
-                                        predict-fn
                                         loss-fn
                                         dataset-seq)
               (catch Throwable e

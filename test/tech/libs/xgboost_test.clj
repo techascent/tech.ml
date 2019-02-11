@@ -1,8 +1,8 @@
-(ns tech.xgboost-test
+(ns tech.libs.xgboost-test
   (:require [clojure.test :refer :all]
             [tech.verify.ml.regression :as verify-reg]
             [tech.verify.ml.classification :as verify-cls]
-            [tech.xgboost]))
+            [tech.libs.xgboost]))
 
 
 (deftest basic
@@ -13,10 +13,6 @@
   (verify-reg/basic-regression {:model-type :xgboost/regression
                                 :early-stopping-round 5
                                 :round 50}))
-
-
-(deftest scaled-features
-  (verify-reg/scaled-features {:model-type :xgboost/regression}))
 
 
 (deftest k-fold-regression

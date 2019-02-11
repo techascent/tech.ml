@@ -32,7 +32,8 @@
 (defn apply-pipeline-operator
   [{:keys [pipeline dataset options]} op]
   (let [inference? (:inference? options)
-        [op context] (if-not inference?
+        recorded? (or (:recorded? options) inference?)
+        [op context] (if-not recorded?
                        [op {}]
                        [(:operation op) (:context op)])
         op-type (keyword (name (first op)))
@@ -40,14 +41,16 @@
         op-args (drop 2 op)
         col-seq (column-filters/select-columns dataset col-selector)
         op-impl (get-etl-operator op-type)
-        [context options] (if-not inference?
+        [context options] (if-not recorded?
                             (let [context
                                   (etl-proto/build-etl-context-columns
                                    op-impl dataset col-seq op-args)]
-                              [context (update options
-                                               :label-map
-                                               merge
-                                               (:label-map context))])
+                              [context (if (:label-map context)
+                                         (update options
+                                                 :label-map
+                                                 merge
+                                                 (:label-map context))
+                                         options)])
                             [context options])
         dataset (etl-proto/perform-etl-columns
                  op-impl dataset col-seq op-args context)]

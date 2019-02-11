@@ -127,28 +127,52 @@ the correct type."
 
 
 (defn ->flyweight
-  "Convert dataset to seq-of-maps dataset.
-  Flag indicates "
+  "Convert dataset to seq-of-maps dataset.  Flag indicates if errors should be thrown on
+  missing values or if nil should be inserted in the map.  IF a label map is passed in
+  then for the columns that are present in the label map a reverse mapping is done such
+  that the flyweight maps contain the labels and not their encoded values."
   [dataset & {:keys [column-name-seq
-                     error-on-missing-values?]
+                     error-on-missing-values?
+                     label-map]
               :or {column-name-seq :all
                    error-on-missing-values? true}}]
   (let [dataset (select dataset column-name-seq :all)
-        column-name-seq (map col-proto/column-name (columns dataset))]
-    (if error-on-missing-values?
-      (ds-map dataset (fn [& args]
-                        (zipmap column-name-seq args)))
-      ;;Much slower algorithm
-      (if-let [ds-columns (seq (columns dataset))]
-        (let [ecount (long (apply min (map dtype/ecount ds-columns)))
-              columns (columns dataset)]
-          (for [idx (range ecount)]
-            (->> (for [col columns]
-                   [(col-proto/column-name col)
-                    (when-not (col-proto/is-missing? col idx)
-                      (col-proto/get-column-value col idx))])
-                 (remove nil?)
-                 (into {}))))))))
+        column-name-seq (map col-proto/column-name (columns dataset))
+        inverse-label-map (->> label-map
+                               (map (juxt first (comp c-set/map-invert second)))
+                               (into {}))
+        retval
+        (if error-on-missing-values?
+          (ds-map dataset (fn [& args]
+                            (zipmap column-name-seq args)))
+          ;;Much slower algorithm
+          (if-let [ds-columns (seq (columns dataset))]
+            (let [ecount (long (apply min (map dtype/ecount ds-columns)))
+                  columns (columns dataset)]
+              (for [idx (range ecount)]
+                (->> (for [col columns]
+                       [(col-proto/column-name col)
+                        (when-not (col-proto/is-missing? col idx)
+                          (col-proto/get-column-value col idx))])
+                     (remove nil?)
+                     (into {}))))))]
+    (if (seq inverse-label-map)
+      (->> retval
+           (map (fn [row-map]
+                  (->> inverse-label-map
+                       (reduce (fn [row-map [colname value-map]]
+                                 (if (contains? row-map colname)
+                                   (if-let [mapped-val (get value-map
+                                                            (long (get row-map colname)))]
+                                     (assoc row-map colname mapped-val)
+                                     (throw (ex-info (format "Failed to find column %s value %s in label map %s"
+                                                             colname (get row-map colname) value-map) {})))
+                                   row-map))
+                               row-map)))))
+      retval)))
+
+
+(declare ->dataset)
 
 
 (defn ->k-fold-datasets
@@ -156,8 +180,10 @@ the correct type."
   Randomize dataset defaults to true which will realize the entire dataset
   so use with care if you have large datasets."
   [dataset k {:keys [randomize-dataset?]
-              :or {randomize-dataset? true}}]
-  (let [[n-rows n-cols] (m/shape dataset)
+              :or {randomize-dataset? true}
+              :as options}]
+  (let [dataset (->dataset dataset options)
+        [n-rows n-cols] (m/shape dataset)
         indexes (cond-> (range n-rows)
                   randomize-dataset? shuffle)
         fold-size (inc (quot (long n-rows) k))
@@ -171,8 +197,10 @@ the correct type."
 (defn ->train-test-split
   [dataset {:keys [randomize-dataset? train-fraction]
             :or {randomize-dataset? true
-                 train-fraction 0.7}}]
-  (let [[n-rows n-cols] (m/shape dataset)
+                 train-fraction 0.7}
+            :as options}]
+  (let [dataset (->dataset dataset options)
+        [n-rows n-cols] (m/shape dataset)
         indexes (cond-> (range n-rows)
                   randomize-dataset? shuffle)
         n-elems (long n-rows)
@@ -251,22 +279,29 @@ the correct type."
 
 
 (defn map-seq->dataset
+  "Given a sequence of maps, construct a dataset.  Defaults to a tablesaw-based
+  dataset."
   [map-seq {:keys [scan-depth
                    column-definitions
-                   table-name]
+                   table-name
+                   dataset-constructor]
             :or {scan-depth 100
-                 table-name "_unnamed"}
+                 table-name "_unnamed"
+                 dataset-constructor 'tech.libs.tablesaw/map-seq->tablesaw-dataset}
             :as options}]
-  ((parallel/require-resolve 'tech.libs.tablesaw/map-seq->tablesaw-dataset)
+  ((parallel/require-resolve dataset-constructor)
    map-seq options))
 
 
 (defn ->dataset
-  [item & {:keys [table-name]
-           :or {table-name "_unnamed"}}]
-  (if (satisfies? ds-proto/PColumnarDataset item)
-    item
-    (when (and (sequential? item)
-               (or (not (seq item))
-                   (map? (first item))))
-      (map-seq->dataset item {:table-name table-name}))))
+  [dataset {:keys [table-name]
+            :or {table-name "_unnamed"}
+            :as options}]
+  (if (satisfies? ds-proto/PColumnarDataset dataset)
+    dataset
+    (if (and (sequential? dataset)
+             (or (not (seq dataset))
+                 (map? (first dataset))))
+      (map-seq->dataset dataset options)
+      (throw (ex-info "Dataset appears to be empty or not convertible to a dataset"
+                      {:dataset dataset})))))

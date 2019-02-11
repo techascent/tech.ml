@@ -205,7 +205,9 @@
                               (when label-map
                                 {:num-class (count label-map)}))
                       (map (fn [[k v]]
-                             [(s/replace (name k) "-" "_" ) v]))
+                             (when v
+                               [(s/replace (name k) "-" "_" ) v])))
+                      (remove nil?)
                       (into {}))
           metrics-data (float-array round)
           ^Booster model (if early-stopping-round
@@ -225,10 +227,10 @@
           retval (->> (dataset->dmatrix dataset (:feature-columns options) nil)
                       (.predict model))]
       (if (= "multi:softprob" (get-objective options))
-        (let [label-map (dataset/label-inverse-map options)
-              ordered-labels (->> label-map
-                                  (sort-by second)
-                                  (mapv first))
+        (let [inverse-label-map (dataset/label-inverse-map options)
+              ordered-labels (->> inverse-label-map
+                                  (sort-by first)
+                                  (mapv second))
               label-maps
               (->> retval
                    (map (fn [output-vec]

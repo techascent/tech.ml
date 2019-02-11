@@ -133,7 +133,7 @@
         ;;spot check a few of the items
         (is (m/equals (dtype/->vector (ds/column sane-dataset-for-flyweight "MSSubClass"))
                       (dtype/->vector (ds/column inference-ds "MSSubClass"))))
-        ;;did categoical values get encoded identically?
+        ;;did categorical values get encoded identically?
         (is (m/equals (dtype/->vector (ds/column sane-dataset-for-flyweight "OverallQual"))
                       (dtype/->vector (ds/column inference-ds "OverallQual"))))))))
 
@@ -224,9 +224,10 @@
         origin-ds (mapseq-fruit-dataset)
         src-keys (set (keys (first (mapseq-fruit-dataset))))
         result-keys (set (->> (ds/columns dataset)
-                              (map ds-col/column-name)))]
+                              (map ds-col/column-name)))
+        non-categorical (col-filters/execute-column-filter dataset [:not :categorical?])]
 
-    ;;Kind of hard
+    ;;Column names can be keywords.
     (is (= (set (keys (first (mapseq-fruit-dataset))))
            (set (->> (ds/columns src-ds)
                      (map ds-col/column-name)))))
@@ -234,6 +235,20 @@
     (is (= (c-set/difference src-keys #{:fruit-subtype})
            result-keys))
 
-    ;;Really hard
+    ;; Map back from values to keys for labels.  For tablesaw, column values
+    ;; are never keywords.
     (is (= (mapv (comp name :fruit-name) (mapseq-fruit-dataset))
-           (ds/labels dataset options)))))
+           (ds/labels dataset options)))
+
+    (is (= (mapv (comp name :fruit-name) (mapseq-fruit-dataset))
+           (->> (ds/->flyweight dataset :label-map (get options :label-map))
+                (mapv :fruit-name))))
+
+    ;; Ensure range map works
+    (is (= (vec (repeat (count non-categorical) [-1 1]))
+           (->> non-categorical
+                (mapv (fn [colname]
+                        (let [{col-min :min
+                               col-max :max} (-> (ds/column dataset colname)
+                                                 (ds-col/stats [:min :max]))]
+                          [(long col-min) (long col-max)]))))))))
