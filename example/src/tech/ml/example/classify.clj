@@ -1,5 +1,5 @@
-(ns tech.ml.classify
-  (:require [tech.ml.svm-datasets :as datasets]
+(ns tech.ml.exampel.classify
+  (:require [tech.ml.example.svm-datasets :as datasets]
             [tech.ml :as ml]
             [tech.ml.dataset :as ml-dataset]
             [tech.ml.loss :as loss]

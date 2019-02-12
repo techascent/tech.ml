@@ -42,7 +42,6 @@
 
 (defn select-columns
   [dataset col-selector]
-  (println col-selector)
   (cond
     (string? col-selector)
     [col-selector]

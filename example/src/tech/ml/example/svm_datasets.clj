@@ -1,9 +1,10 @@
-(ns tech.ml.svm-datasets
+(ns tech.ml.example.svm-datasets
   "These are datasets from this page:
   https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/"
   (:require [clojure.string :as s]
             [tech.ml.dataset.etl :as etl]
-            [tech.ml.dataset.svm :as svm]))
+            [tech.ml.dataset.svm :as svm]
+            [tech.ml.dataset :as ds]))
 
 
 (def basic-svm-pipeline '[[string->number string?]
@@ -24,23 +25,24 @@
 
 (defn parse-svm-files
   [train-fname label-map & [test-fname]]
-  (let [{train-ds :dataset
-         options :options
-         pipeline :pipeline}
-        (-> (svm/parse-svm-file train-fname :label-map label-map)
-            :dataset
-            (etl/apply-pipeline basic-svm-pipeline {:target :label}))
-        _ (println "train-finished")
-        test-ds (when test-fname
-                  (-> (svm/parse-svm-file test-fname :label-map label-map)
-                      :dataset
-                      (etl/apply-pipeline pipeline {:target :label
-                                                    :recorded? true})))]
-    (println "test-finished")
+  (println "Loading" train-fname)
+  (time
+   (let [{train-ds :dataset
+          options :options
+          pipeline :pipeline}
+         (-> (svm/parse-svm-file train-fname :label-map label-map)
+             :dataset
+             (etl/apply-pipeline basic-svm-pipeline {:target :label}))
+         test-ds (when test-fname
+                   (-> (svm/parse-svm-file test-fname :label-map label-map)
+                       :dataset
+                       (etl/apply-pipeline pipeline {:target :label
+                                                     :recorded? true})
+                       :dataset))]
 
-    (merge {:train-ds train-ds
-            :options options}
-           (when test-ds {:test-ds test-ds}))))
+     (merge {:train-ds train-ds
+             :options options}
+            (when test-ds {:test-ds test-ds})))))
 
 
 
@@ -100,5 +102,5 @@
            test-ds-1
            test-ds-2
            test-ds-3]
-          (map (fn [ds-fn]
+          (mapv (fn [ds-fn]
                  (ds-fn)))))))

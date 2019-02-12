@@ -54,9 +54,8 @@
                                                  (:label-map context))
                                          options)])
                             [context options])
-        _ (println op)
-        dataset (time (etl-proto/perform-etl-columns
-                       op-impl dataset col-seq op-args context))]
+        dataset (etl-proto/perform-etl-columns
+                 op-impl dataset col-seq op-args context)]
     {:dataset dataset
      :options options
      :pipeline (conj pipeline {:operation (->> (concat [(first op) col-seq]
