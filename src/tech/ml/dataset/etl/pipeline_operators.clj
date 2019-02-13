@@ -112,9 +112,11 @@
    dataset column-name
    (fn [col]
      (let [missing-indexes (ds-col/missing col)]
-       (ds-col/set-values col (map vector
-                                   (seq missing-indexes)
-                                   (repeat (:missing-value context))))))))
+       (let [retval
+             (ds-col/set-values col (map vector
+                                         (seq missing-indexes)
+                                         (repeat (:missing-value context))))]
+         retval)))))
 
 
 (defn- make-string-table-from-args
@@ -275,7 +277,10 @@
            (into {})))
 
     (perform-etl-columns [op dataset column-name-seq op-args context]
-      (let [src-data (ds/select dataset column-name-seq :all)
+      (let [column-name-seq (->> column-name-seq
+                                 (clojure.core/remove #(= (get-in context [% :min])
+                                                          (get-in context [% :max]))))
+            src-data (ds/select dataset column-name-seq :all)
             [src-rows src-cols] (ct/shape src-data)
             colseq (ds/columns src-data)
             etl-dtype (etl-datatype)
@@ -326,12 +331,11 @@
         (->> colseq
              (map-indexed vector)
              (reduce (fn [dataset [col-idx col]]
-                       (let [colname (ds-col/column-name col)]
-                         (ds/update-column
-                          dataset colname
-                          (fn [incoming-col]
-                            (let [new-col (ds-col/new-column incoming-col etl-dtype src-rows
-                                                             (dissoc (ds-col/metadata incoming-col)
-                                                                     :categorical?))]
-                              (ct/assign! new-col (ct/select backing-store col-idx :all)))))))
+                       (ds/update-column
+                        dataset (ds-col/column-name col)
+                        (fn [incoming-col]
+                          (-> (ds-col/new-column incoming-col etl-dtype src-rows
+                                                 (dissoc (ds-col/metadata incoming-col)
+                                                         :categorical?))
+                              (ct/assign!(ct/select backing-store col-idx :all))))))
                      dataset))))))

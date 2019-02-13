@@ -4,7 +4,8 @@
   (:require [clojure.string :as s]
             [tech.ml.dataset.etl :as etl]
             [tech.ml.dataset.svm :as svm]
-            [tech.ml.dataset :as ds]))
+            [tech.ml.dataset :as ds]
+            [tech.ml.dataset.column :as ds-col]))
 
 
 (def basic-svm-pipeline '[[string->number string?]
@@ -39,7 +40,6 @@
                        (etl/apply-pipeline pipeline {:target :label
                                                      :recorded? true})
                        :dataset))]
-
      (merge {:train-ds train-ds
              :options options}
             (when test-ds {:test-ds test-ds})))))

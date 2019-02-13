@@ -5,6 +5,7 @@
             [tech.ml.dataset.etl.column-filters :as col-filters]
             [tech.ml.dataset :as ds]
             [tech.ml.dataset.column :as ds-col]
+            [tech.ml.dataset.svm :as ds-svm]
             [tech.ml.loss :as loss]
             [tech.ml :as ml]
             [tech.libs.xgboost]
@@ -261,3 +262,29 @@
            (->> (-> (ds/ds-concat dataset dataset)
                     (ds/->flyweight :label-map (get options :label-map)))
                 (mapv :fruit-name))))))
+
+
+
+(deftest svm-missing-regression
+  (let [basic-svm-pipeline '[[string->number string?]
+                             [replace-missing * 0]
+                             ;;scale everything [-1 1]
+                             [range-scaler [not categorical?]]]
+        label-map {-1.0 :negative
+                   1.0 :positive}
+        train-fname "data/test-svm-dataset.svm"
+        {train-ds :dataset
+          options :options
+         pipeline :pipeline}
+        (-> (ds-svm/parse-svm-file train-fname :label-map label-map)
+            :dataset
+            (etl/apply-pipeline basic-svm-pipeline {:target :label}))]
+
+    (is (= nil
+           (->> train-ds
+                ds/columns
+                (map (fn [col]
+                       (when (seq (ds-col/missing col))
+                         (assoc (ds-col/metadata col) :missing (count (ds-col/missing col))))))
+                (remove nil?)
+                seq)))))

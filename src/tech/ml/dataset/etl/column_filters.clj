@@ -128,6 +128,14 @@
 
 
 (register-column-filter!
+ :missing?
+ (fn [dataset & args]
+   (->> (process-filter-args dataset args)
+        (filter #(> (count (ds-col/missing %)) 0))
+        (mapv ds-col/column-name))))
+
+
+(register-column-filter!
  :*
  (fn [dataset & args]
    (->> (process-filter-args dataset args)
