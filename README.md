@@ -18,7 +18,7 @@ Dataset ETL is a repeatable processing that stores data so that doing inference 
 5.  Infer.
 
 
-Checkout the [unit tests](test/tech/libs/tablesaw_test.clj) and [example pipeline](example/src/tech/ml/example/svm_dataset.clj).
+Checkout the [unit tests](test/tech/libs/tablesaw_test.clj) and [example pipeline](example/src/tech/ml/example/svm_datasets.clj).
 
 
 ### ML Is Functional
@@ -59,10 +59,11 @@ user> (first (classify-verify/fruit-dataset))
  :mass 192.0,
  :width 8.4}
 
-
+user> classify-verify/fruit-pipeline
 [[remove [:fruit-subtype :fruit-label]]
  [string->number string?]
  [range-scaler (not categorical?)]]
+ 
 user> (def pipeline-result (etl/apply-pipeline (classify-verify/fruit-dataset)
                                                classify-verify/fruit-pipeline
                                                {:target :fruit-name}))
@@ -120,7 +121,9 @@ user> (keys model)
 (:model :options :id)
 
 
-user> (def infer-pipeline (etl/apply-pipeline (classify-verify/fruit-dataset) (:pipeline pipeline-result) {:inference? true}))
+user> (def infer-pipeline (etl/apply-pipeline (classify-verify/fruit-dataset) 
+                                              (:pipeline pipeline-result) 
+                                              {:inference? true}))
 [remove [:fruit-subtype :fruit-label]]
 [string->number (:fruit-name)]
 [range-scaler #{:mass :width :color-score :height}]
@@ -246,7 +249,7 @@ towards getting the best possible results for a dataset in the least amount of
 (developer) time.
 
 
-[Here](example/src/tech/ml/classify.clj)  is an example doing just that.
+[Here](example/src/tech/ml/example/classify.clj)  is an example doing just that.
 
 
 ## License
