@@ -59,10 +59,11 @@ user> (first (classify-verify/fruit-dataset))
  :mass 192.0,
  :width 8.4}
 
-
+user> classify-verify/fruit-pipeline
 [[remove [:fruit-subtype :fruit-label]]
  [string->number string?]
  [range-scaler (not categorical?)]]
+ 
 user> (def pipeline-result (etl/apply-pipeline (classify-verify/fruit-dataset)
                                                classify-verify/fruit-pipeline
                                                {:target :fruit-name}))
