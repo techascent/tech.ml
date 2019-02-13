@@ -120,10 +120,7 @@ user> (keys model)
 
 user> (def infer-pipeline (etl/apply-pipeline (classify-verify/fruit-dataset) 
                                               (:pipeline pipeline-result) 
-                                              {:inference? true}))
-[remove [:fruit-subtype :fruit-label]]
-[string->number (:fruit-name)]
-[range-scaler #{:mass :width :color-score :height}]
+                                              {:inference? true}))                                         
 #'user/infer-pipeline
 user> (ml/predict model (:dataset infer-pipeline))
 ({"apple" 0.98377246, "lemon" 0.0032576045, "mandarin" 0.003170099, "orange" 0.009799847}
