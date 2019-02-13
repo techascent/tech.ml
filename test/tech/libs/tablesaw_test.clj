@@ -139,6 +139,82 @@
                       (dtype/->vector (ds/column inference-ds "OverallQual"))))))))
 
 
+(def full-aimes-pipeline
+  '[[remove "Id"]
+    ;;Replace missing values or just empty csv values with NA
+    [replace-missing string? "NA"]
+    [replace-string string? "" "NA"]
+    [replace-missing numeric? 0]
+    [replace-missing boolean? false]
+    [->etl-datatype [or numeric? boolean?]]
+    [string->number "Utilities" [["NA" -1] "ELO" "NoSeWa" "NoSewr" "AllPub"]]
+    [string->number "LandSlope" ["Gtl" "Mod" "Sev" "NA"]]
+    [string->number ["ExterQual"
+                     "ExterCond"
+                     "BsmtQual"
+                     "BsmtCond"
+                     "HeatingQC"
+                     "KitchenQual"
+                     "FireplaceQu"
+                     "GarageQual"
+                     "GarageCond"
+                     "PoolQC"]   ["Ex" "Gd" "TA" "Fa" "Po" "NA"]]
+    [set-attribute ["MSSubClass" "OverallQual" "OverallCond"] :categorical? true]
+    [string->number "MasVnrType" {"BrkCmn" 1
+                                 "BrkFace" 1
+                                 "CBlock" 1
+                                 "Stone" 1
+                                 "None" 0
+                                 "NA" -1}]
+    [string->number "SaleCondition" {"Abnorml" 0
+                                     "Alloca" 0
+                                     "AdjLand" 0
+                                     "Family" 0
+                                     "Normal" 0
+                                     "Partial" 1
+                                     "NA" -1}]
+    ;;Auto convert the rest that are still string columns
+    [string->number string?]
+    [m= "SalePrice" (log1p (col "SalePrice"))]
+    [m= "OverallGrade" (* (col "OverallQual") (col "OverallCond"))]
+    ;; Overall quality of the garage
+    [m= "GarageGrade"  (* (col "GarageQual") (col "GarageCond"))]
+    ;; Overall quality of the exterior
+    [m= "ExterGrade" (* (col "ExterQual") (col "ExterCond"))]
+    ;; Overall kitchen score
+    [m=  "KitchenScore" (* (col "KitchenAbvGr") (col "KitchenQual"))]
+    ;; Overall fireplace score
+    [m= "FireplaceScore" (* (col "Fireplaces") (col "FireplaceQu"))]
+    ;; Overall garage score
+    [m= "GarageScore" (* (col "GarageArea") (col "GarageQual"))]
+    ;; Overall pool score
+    [m= "PoolScore" (* (col "PoolArea") (col "PoolQC"))]
+    ;; Simplified overall quality of the house
+    [m= "SimplOverallGrade" (* (col "OverallQual") (col "OverallCond"))]
+    ;; Simplified overall quality of the exterior
+    [m= "SimplExterGrade" (* (col "ExterQual") (col "ExterCond"))]
+    ;; Simplified overall pool score
+    [m= "SimplPoolScore" (* (col "PoolArea") (col "PoolQC"))]
+    ;; Simplified overall garage score
+    [m= "SimplGarageScore" (* (col "GarageArea") (col "GarageQual"))]
+    ;; Simplified overall fireplace score
+    [m= "SimplFireplaceScore" (* (col "Fireplaces") (col "FireplaceQu"))]
+    ;; Simplified overall kitchen score
+    [m= "SimplKitchenScore" (* (col "KitchenAbvGr") (col "KitchenQual"))]
+    ;; Total number of bathrooms
+    [m= "TotalBath" (+ (col "BsmtFullBath")
+                       (* 0.5 (col "BsmtHalfBath"))
+                       (col "FullBath")
+                       (* 0.5 "HalfBath"))]
+    ;; Total SF for house (incl. basement)
+    [m= "AllSF" (+ (col "GrLivArea") (col "TotalBsmtSF"))]
+    ;; Total SF for 1st + 2nd floors
+    [m= "AllFlrsSF" (+ (col "1stFlrSF") (col "2ndFlrSF"))]
+    ;; Total SF for porch
+    [m= "AllPorchSF" (+ (col "OpenPorchSF") (col "EnclosedPorch")
+                        (col "3SsnPorch") (col "ScreenPorch"))]])
+
+
 (defn train-test-split
   [dataset & {:keys [train-fraction]
               :or {train-fraction 0.7}}]
@@ -156,7 +232,7 @@
   (let [src-dataset (tablesaw/path->tablesaw-dataset
                      "data/aimes-house-prices/train.csv")
         {:keys [dataset pipeline options]}
-        (etl/apply-pipeline src-dataset basic-pipeline {:target "SalePrice"})
+        (etl/apply-pipeline src-dataset full-aimes-pipeline {:target "SalePrice"})
         {:keys [train-ds test-ds]} (train-test-split dataset)
         all-columns (set (map ds-col/column-name (ds/columns dataset)))
         label-keys #{"SalePrice"}
@@ -184,6 +260,7 @@
         labels (dtype/->vector (ds/column test-ds "SalePrice"))
         predictions (ml/predict model test-ds)
         loss-value (loss/rmse predictions labels)]
+    (println loss-value)
     (is (< loss-value 0.20))))
 
 
