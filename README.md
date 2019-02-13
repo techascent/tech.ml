@@ -30,9 +30,6 @@ map of options.
 
 The returned map contains a uuid ID so you can record your model ID somewhere and find it later.
 
-(in the example project, but using code from the [classification verification](src/tech/verify/ml/classification.clj)
-
-
 ### Example
 
 
@@ -123,10 +120,7 @@ user> (keys model)
 
 user> (def infer-pipeline (etl/apply-pipeline (classify-verify/fruit-dataset) 
                                               (:pipeline pipeline-result) 
-                                              {:inference? true}))
-[remove [:fruit-subtype :fruit-label]]
-[string->number (:fruit-name)]
-[range-scaler #{:mass :width :color-score :height}]
+                                              {:inference? true}))                                         
 #'user/infer-pipeline
 user> (ml/predict model (:dataset infer-pipeline))
 ({"apple" 0.98377246, "lemon" 0.0032576045, "mandarin" 0.003170099, "orange" 0.009799847}
@@ -250,6 +244,9 @@ towards getting the best possible results for a dataset in the least amount of
 
 
 [Here](example/src/tech/ml/example/classify.clj)  is an example doing just that.
+
+
+**Much thanks to the clojure ml working group!**
 
 
 ## License
