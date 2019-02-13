@@ -4,6 +4,8 @@
 
 Library to encapsulate a few core concepts of techascent system.
 
+Much thanks to the clojure ml working group!
+
 ## Core Concepts
 
 
