@@ -4,8 +4,6 @@
 
 Library to encapsulate a few core concepts of techascent system.
 
-Much thanks to the clojure ml working group!
-
 ## Core Concepts
 
 
@@ -252,6 +250,9 @@ towards getting the best possible results for a dataset in the least amount of
 
 
 [Here](example/src/tech/ml/example/classify.clj)  is an example doing just that.
+
+
+**Much thanks to the clojure ml working group!**
 
 
 ## License
