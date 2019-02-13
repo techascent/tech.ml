@@ -18,7 +18,7 @@ Dataset ETL is a repeatable processing that stores data so that doing inference 
 5.  Infer.
 
 
-Checkout the [unit tests](test/tech/libs/tablesaw_test.clj) and [example pipeline](example/src/tech/ml/example/svm_dataset.clj).
+Checkout the [unit tests](test/tech/libs/tablesaw_test.clj) and [example pipeline](example/src/tech/ml/example/svm_datasets.clj).
 
 
 ### ML Is Functional
@@ -246,7 +246,7 @@ towards getting the best possible results for a dataset in the least amount of
 (developer) time.
 
 
-[Here](example/src/tech/ml/classify.clj)  is an example doing just that.
+[Here](example/src/tech/ml/example/classify.clj)  is an example doing just that.
 
 
 ## License
