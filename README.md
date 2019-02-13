@@ -1,32 +1,24 @@
 # tech.ml
 
-[![Clojars Project](https://img.shields.io/clojars/v/techascent/tech.ml-base.svg)](https://clojars.org/techascent/tech.ml-base)
+[![Clojars Project](https://img.shields.io/clojars/v/techascent/tech.ml.svg)](https://clojars.org/techascent/tech.ml)
 
 Library to encapsulate a few core concepts of techascent system.
 
 ## Core Concepts
 
 
-### Datasets Are Sequences Of Maps
+### Dataset Pipeline Processing
 
-We have found that for most problems, including computer vision, a sequence of maps is a great abstraction for a dataset:
-```clojure
-;; This is a dataset
-(def test-ds [{:a 1 :b 2} {:a 3 :b 4}])
-```
+Dataset ETL is a repeatable processing that stores data so that doing inference later is automatic.
 
-Before the dataset gets to the particular ML subsystem, we use the optimized system in
-[tech.datatype](https://github.com/techascent/tech.datatype) to convert this style of dataset into
-a sequence of maps with fewer keys and aggregate data:
+1.  Build your ETL pipeline.
+2.  Apply to training dataset.  Result is a new pipeline with things that min,max per column stored or even trained models.
+3.  Train, gridsearch, get a model.
+4.  Use ETL pipeline returned from (2) with no modification to apply to new inference samples.
+5.  Infer.
 
-```clojure
-(def optimized-ds [{:tech.ml.dataset/features (double-array [1 2])} {:tech.ml.dataset/features (double-array [3 4])}])
-```
 
-Note that this subsystem is capable of dealing with native pointer based things like
-[opencv images](http://techascent.com/blog/opencv-love.html).  So those can be entries in your dataset and everything
-will work out fine.
-
+Checkout the [unit tests](test/tech/libs/tablesaw_test.clj) and [example pipeline](example/src/tech/ml/example/svm_dataset.clj).
 
 
 ### ML Is Functional
@@ -39,17 +31,26 @@ map of options.
 The returned map contains a uuid ID so you can record your model ID somewhere and find it later.
 
 (in the example project, but using code from the [classification verification](src/tech/verify/ml/classification.clj)
-```clojure
-user> (require '[tech.verify.ml.classification :as classify-verify])
 
-user> (require '[tech.xgboost])
+
+### Example
+
+
+```clojure
+user>
+:tech.resource.gc Reference thread starting (require '[tech.verify.ml.classification :as classify-verify])
 nil
-user> (require '[tech.ml-base :as ml])
+user> (require '[tech.libs.xgboost])
+nil
+user> (require '[tech.ml :as ml])
 nil
 user> (require '[tech.ml.loss :as loss])
-
+nil
+user> (require '[tech.ml.dataset.etl :as etl])
+nil
+user> (require '[tech.ml.dataset :as dataset])
+nil
 user> (first (classify-verify/fruit-dataset))
-
 {:color-score 0.55,
  :fruit-label 1.0,
  :fruit-name :apple,
@@ -59,86 +60,82 @@ user> (first (classify-verify/fruit-dataset))
  :width 8.4}
 
 
-
-user> (require '[tech.xgboost])
-nil
-user> (require '[tech.ml-base :as ml])
-nil
-user> (require '[tech.ml.loss :as loss])
-
-nil
-user> (require '[tech.ml.dataset :as dataset])
-nil
-user> (def split-ds  (->> (classify-verify/fruit-dataset)
-                          (dataset/->train-test-split {})))
-#'user/split-ds
-user> (def train-ds (:train-ds split-ds))
-#'user/train-ds
-
-user> (ml/train  {:model-type :xgboost/classification}
-                 [:color-score :height :mass :width]
-                 :fruit-name
-                 train-ds)
-
-{:feature-keys [:color-score :height :mass :width],
- :id #uuid "ceb44288-8c02-413d-93af-c649dccb63c5",
- :label-keys :fruit-name,
- :model #<[B@693e6632>,
- :options {:container-fn #<Fn@7d8aa28a tech.datatype/make_array_of_type>,
-           :datatype :float32,
-           :label-map {:fruit-name {:apple 0, :lemon 2, :mandarin 3, :orange 1}},
-           :model-type :xgboost/classification,
-           :multiclass-label-base-index 0,
-           :tech.ml.dataset/dataset-info {:tech.ml.dataset/feature-ecount 4,
-                                          :tech.ml.dataset/key-ecount-map {:color-score 1,
-                                                                           :fruit-name 1,
-                                                                           :height 1,
-                                                                           :mass 1,
-                                                                           :width 1},
-                                          :tech.ml.dataset/num-classes 4},
-           :tech.ml.dataset/feature-keys [:color-score :height :mass :width],
-           :tech.ml.dataset/label-keys [:fruit-name]}}
-           
-user> (def model *1)
+[[remove [:fruit-subtype :fruit-label]]
+ [string->number string?]
+ [range-scaler (not categorical?)]]
+user> (def pipeline-result (etl/apply-pipeline (classify-verify/fruit-dataset)
+                                               classify-verify/fruit-pipeline
+                                               {:target :fruit-name}))
+#'user/pipeline-result
+user> (keys pipeline-result)
+(:dataset :options :pipeline)
+user> (:options pipeline-result)
+{:dataset-column-metadata {:post-pipeline [{:categorical? true,
+                                            :datatype :float64,
+                                            :name :fruit-name,
+                                            :size 59,
+                                            :target? true}
+                                           {:datatype :float64, :name :mass, :size 59}
+                                           {:datatype :float64, :name :width, :size 59}
+                                           {:datatype :float64, :name :height, :size 59}
+                                           {:datatype :float64,
+                                            :name :color-score,
+                                            :size 59}],
+                           :pre-pipeline [{:datatype :float32,
+                                           :name :fruit-label,
+                                           :size 59}
+                                          {:categorical? true,
+                                           :datatype :string,
+                                           :name :fruit-name,
+                                           :size 59}
+                                          {:categorical? true,
+                                           :datatype :string,
+                                           :name :fruit-subtype,
+                                           :size 59}
+                                          {:datatype :float32, :name :mass, :size 59}
+                                          {:datatype :float32, :name :width, :size 59}
+                                          {:datatype :float32, :name :height, :size 59}
+                                          {:datatype :float32,
+                                           :name :color-score,
+                                           :size 59}]},
+ :feature-columns [:color-score :height :mass :width],
+ :label-columns [:fruit-name],
+ :label-map {:fruit-name {"apple" 0, "lemon" 2, "mandarin" 3, "orange" 1}},
+ :target :fruit-name}
+user> (:pipeline pipeline-result)
+[{:context {}, :operation [remove [:fruit-subtype :fruit-label]]}
+ {:context {:label-map {:fruit-name {"apple" 0, "lemon" 2, "mandarin" 3, "orange" 1}}},
+  :operation [string->number (:fruit-name)]}
+ {:context {:color-score {:max 0.9300000071525574, :min 0.550000011920929},
+            :height {:max 10.5, :min 4.0},
+            :mass {:max 362.0, :min 76.0},
+            :width {:max 9.600000381469727, :min 5.800000190734863}},
+  :operation [range-scaler #{:color-score :height :mass :width}]}]
+user> (def model (ml/train (assoc (:options pipeline-result) :model-type :xgboost/classification)
+                           (:dataset pipeline-result)))
 #'user/model
+user> (type model)
+#<Class@ffaa6af clojure.lang.PersistentArrayMap>
+user> (keys model)
+(:model :options :id)
+
+
+user> (def infer-pipeline (etl/apply-pipeline (classify-verify/fruit-dataset) (:pipeline pipeline-result) {:inference? true}))
+[remove [:fruit-subtype :fruit-label]]
+[string->number (:fruit-name)]
+[range-scaler #{:mass :width :color-score :height}]
+#'user/infer-pipeline
+user> (ml/predict model (:dataset infer-pipeline))
+({"apple" 0.98377246, "lemon" 0.0032576045, "mandarin" 0.003170099, "orange" 0.009799847}
+ {"apple" 0.9763731, "lemon" 0.0032331028, "mandarin" 0.004000053, "orange" 0.016393797}
+ {"apple" 0.97751075, "lemon" 0.0032699052, "mandarin" 0.003186134, "orange" 0.016033292}
+ {"apple" 0.011603652, "lemon" 0.015576145, "mandarin" 0.93900126, "orange" 0.033818968}
+ {"apple" 0.011314781, "lemon" 0.018377881, "mandarin" 0.9156251, "orange" 0.05468225}
+ {"apple" 0.011117198, "lemon" 0.02829335, "mandarin" 0.899636, "orange" 0.06095348}
+ {"apple" 0.018726224, "lemon" 0.018833136, "mandarin" 0.93830687, "orange" 0.024133723}
+ {"apple" 0.018726224, "lemon" 0.018833136, "mandarin" 0.93830687, "orange" 0.024133723}
+...
 ```
-
-Predict logically takes the output of train and a sequence of data and does a prediction.
-
-```clojure
-
-user> (ml/predict model (:test-ds split-ds))
-({:apple 0.93956864, :lemon 0.0131554315, :mandarin 0.008915106, :orange 0.03836079}
- {:apple 0.13050404, :lemon 0.0260633, :mandarin 0.036519047, :orange 0.8069136}
- {:apple 0.20915678, :lemon 0.0561468, :mandarin 0.078457534, :orange 0.6562389}
- {:apple 0.01701929, :lemon 0.015879799, :mandarin 0.01436161, :orange 0.95273936}
- {:apple 0.005177637, :lemon 0.9728976, :mandarin 0.009348835, :orange 0.012575978}
- {:apple 0.04849192, :lemon 0.18590978, :mandarin 0.08649346, :orange 0.67910486}
- {:apple 0.93960667, :lemon 0.013155963, :mandarin 0.008875069, :orange 0.038362343}
- {:apple 0.15794337, :lemon 0.6966642, :mandarin 0.038001172, :orange 0.10739119}
- {:apple 0.85359246, :lemon 0.046843067, :mandarin 0.016741931, :orange 0.08282253}
- {:apple 0.9050958, :lemon 0.021029698, :mandarin 0.018952616, :orange 0.05492185}
- {:apple 0.35707343, :lemon 0.090002134, :mandarin 0.12557973, :orange 0.4273447}
- {:apple 0.0112614175, :lemon 0.94016343, :mandarin 0.008290613, :orange 0.04028459}
- {:apple 0.10490781, :lemon 0.4778567, :mandarin 0.15647744, :orange 0.260758}
- {:apple 0.07708386, :lemon 0.47674534, :mandarin 0.022594173, :orange 0.4235766}
- {:apple 0.006770351, :lemon 0.970588, :mandarin 0.0096611455, :orange 0.012980503}
- {:apple 0.9366283, :lemon 0.011120986, :mandarin 0.015428788, :orange 0.03682192}
- {:apple 0.93760806, :lemon 0.010915581, :mandarin 0.015294555, :orange 0.036181804}
- {:apple 0.010260959, :lemon 0.92626655, :mandarin 0.008225733, :orange 0.055246774})
-
- user> (def predictions *1)
-#'user/predictions
-user> (def labels (map :fruit-name (:test-ds split-ds)))
-#'user/labels
-user> (loss/classification-accuracy predictions labels)
-0.7222222222222222
-```
-
-Note that because everything is specified completely in the output of train, you don't need to
-know anything extra to predict.  The keys used to train, any dataset normalization procedures,
-all of this is stored in the map returned by train.
-
 
 ### Gridsearching
 
@@ -165,64 +162,72 @@ We then just do k-fold across a range of options:
 
 ```clojure
 
-user> (ml/gridsearch [gs-options]
-                     [:color-score :height :mass :width]
-                     :fruit-name
-                     loss/classification-loss (classify-verify/fruit-dataset)
-                     ;;Small k-fold because tiny dataset
-                     :k-fold 3)
-({:average-loss 0.050877192982456146,
-  :k-fold 3,
-  :options {:alpha 0.14358876879825508,
-            :eta 0.796875,
-            :gamma 0.0017707771425311252,
-            :k-fold 3,
-            :label-map {:fruit-name {:apple 0, :lemon 3, :mandarin 1, :orange 2}},
-            :lambda 2.109375,
-            :max-depth 40,
-            :model-type :xgboost/classification,
-            :scale-pos-weight 0.3671875,
-            :subsample 0.47968750000000004,
-            :tech.ml.dataset/dataset-info {:tech.ml.dataset/feature-ecount 4,
-                                           :tech.ml.dataset/key-ecount-map {:color-score 1,
-                                                                            :fruit-name 1,
-                                                                            :height 1,
-                                                                            :mass 1,
-                                                                            :width 1},
-                                           :tech.ml.dataset/num-classes 4},
-            :tech.ml.dataset/feature-keys [:color-score :height :mass :width],
-            :tech.ml.dataset/label-keys [:fruit-name]},
-  :predict-time 4,
-  :train-time 150}
- {:average-loss 0.05087719298245619,
-  :k-fold 3,
-  :options {:alpha 0.022360679774997897,
-            :eta 0.5,
-            :gamma 0.022360679774997897,
-            :k-fold 3,
-            :label-map {:fruit-name {:apple 0, :lemon 3, :mandarin 1, :orange 2}},
-            :lambda 2.5,
-            :max-depth 251,
-            :model-type :xgboost/classification,
-            :scale-pos-weight 1.05,
-            :subsample 0.55,
-            :tech.ml.dataset/dataset-info {:tech.ml.dataset/feature-ecount 4,
-                                           :tech.ml.dataset/key-ecount-map {:color-score 1,
-                                                                            :fruit-name 1,
-                                                                            :height 1,
-                                                                            :mass 1,
-                                                                            :width 1},
-                                           :tech.ml.dataset/num-classes 4},
-            :tech.ml.dataset/feature-keys [:color-score :height :mass :width],
-            :tech.ml.dataset/label-keys [:fruit-name]},
-  :predict-time 4,
-  :train-time 200}
 
+user> (def gridsearch-results (ml/gridsearch (merge (:options pipeline-result)
+                                                    {:k-fold 3}
+                                                    (ml/auto-gridsearch-options {:model-type :xgboost/classification}))
+                                             loss/classification-loss
+                                             (:dataset pipeline-result)))
+#'user/gridsearch-results
+user> (count gridsearch-results)
+5
+user> (map :average-loss gridsearch-results)
+(0.03508771929824561
+ 0.05175438596491229
+ 0.05263157894736843
+ 0.05263157894736843
+ 0.05263157894736843)
+user> (map keys gridsearch-results)
+((:model
+  :options
+  :id
+  :train-time
+  :predict-time
+  :loss
+  :average-loss
+  :total-train-time
+  :total-predict-time)
+ (:model
+  :options
+  :id
+  :train-time
+  :predict-time
+  :loss
+  :average-loss
+  :total-train-time
+  :total-predict-time)
+ (:model
+  :options
+  :id
+  :train-time
+  :predict-time
+  :loss
+  :average-loss
+  :total-train-time
+  :total-predict-time)
+ (:model
+  :options
+  :id
+  :train-time
+  :predict-time
+  :loss
+  :average-loss
+  :total-train-time
+  :total-predict-time)
+ (:model
+  :options
+  :id
+  :train-time
+  :predict-time
+  :loss
+  :average-loss
+  :total-train-time
+  :total-predict-time))
   ...)
 ```
 
-Using the results of this, we get a sort list of the best models *without* the model.
-You can then use the options produced via gridsearching to train some number of these
+Using the results of this, we get a sort list of the best models.
+You can then use the options produced via gridsearching to re-train some number of these
 models and then just take the best one or do an ensemble with ones that are uncorrelated
 across some dimensions you care about.
 

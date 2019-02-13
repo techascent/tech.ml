@@ -28,7 +28,7 @@
                      (zipmap ds-keys)))))))
 
 
-(def fruit-pipeline '[[remove :fruit-subtype]
+(def fruit-pipeline '[[remove [:fruit-subtype :fruit-label]]
                       [string->number string?]
                       ;;Range numeric data to -1 1
                       [range-scaler (not categorical?)]])

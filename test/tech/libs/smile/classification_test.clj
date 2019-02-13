@@ -32,11 +32,12 @@
 ;; that probably need to be tuned.
 (deftest svm
   (verify-cls/classify-fruit {:model-type :smile.classification/svm
-                              :classification-accuracy 0.5}))
+                              :classification-accuracy 0.2}))
 
 
 (deftest svm-gridsearch
-  (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/svm}))
+  (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/svm
+                                     :classification-loss 0.25}))
 
 
 (deftest svm-binary
@@ -50,11 +51,13 @@
 
 
 (deftest lda
-  (verify-cls/classify-fruit {:model-type :smile.classification/linear-discriminant-analysis}))
+  (verify-cls/classify-fruit {:model-type :smile.classification/linear-discriminant-analysis
+                              :classification-accuracy 0.4}))
 
 
 (deftest lda-gridsearch
-  (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/linear-discriminant-analysis}))
+  (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/linear-discriminant-analysis
+                                     :classification-loss 0.5}))
 
 
 ;;QDA won't work on the fruit example, not sure why at this point.
@@ -77,11 +80,13 @@
 
 
 (deftest logistic-regression
-  (verify-cls/classify-fruit {:model-type :smile.classification/logistic-regression}))
+  (verify-cls/classify-fruit {:model-type :smile.classification/logistic-regression
+                              :classification-accuracy 0.5}))
 
 
 (deftest logistic-regression-gridsearch
-  (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/logistic-regression}))
+  (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/logistic-regression
+                                     :classification-loss 0.25}))
 
 
 ;;Default naive-bayes completely fails.
@@ -92,4 +97,4 @@
 
 (deftest naive-bayes-gridsearch
   (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/naive-bayes
-                                     :classification-accuracy 0.5}))
+                                     :classification-loss 0.6}))
