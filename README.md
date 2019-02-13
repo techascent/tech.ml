@@ -30,9 +30,6 @@ map of options.
 
 The returned map contains a uuid ID so you can record your model ID somewhere and find it later.
 
-(in the example project, but using code from the [classification verification](src/tech/verify/ml/classification.clj)
-
-
 ### Example
 
 
