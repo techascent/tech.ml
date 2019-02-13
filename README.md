@@ -121,7 +121,9 @@ user> (keys model)
 (:model :options :id)
 
 
-user> (def infer-pipeline (etl/apply-pipeline (classify-verify/fruit-dataset) (:pipeline pipeline-result) {:inference? true}))
+user> (def infer-pipeline (etl/apply-pipeline (classify-verify/fruit-dataset) 
+                                              (:pipeline pipeline-result) 
+                                              {:inference? true}))
 [remove [:fruit-subtype :fruit-label]]
 [string->number (:fruit-name)]
 [range-scaler #{:mass :width :color-score :height}]
