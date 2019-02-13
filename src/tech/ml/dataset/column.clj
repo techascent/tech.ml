@@ -92,6 +92,18 @@ Implementations should check their metadata before doing calculations."
   (col-proto/stats col stats-set))
 
 
+(defn correlation
+  "Correlation coefficient for given 2 columns.  Available correlation types
+  are:
+  :pearson
+  :spearman
+  :kendall
+
+  Returns floating point number between [-1 1]"
+  [lhs rhs correlation-type]
+  (col-proto/correlation lhs rhs correlation-type))
+
+
 (defn column-values
   "Return a 'thing convertible to a sequence' of values for this column.
 May be a java array or something else.  Likely to error on missing."

@@ -2,6 +2,7 @@
   (:require [tech.ml.dataset :as ds]
             [tech.ml.dataset.column :as ds-col]
             [tech.ml.protocols.etl :as etl-proto]
+            [tech.ml.dataset.etl.math-ops :as math-ops]
             [tech.datatype.java-unsigned :as unsigned]
             [clojure.set :as c-set]))
 
@@ -140,3 +141,38 @@
  (fn [dataset & args]
    (->> (process-filter-args dataset args)
         (map ds-col/column-name))))
+
+
+(defn apply-numeric-column-filter
+  [op-fn dataset & args]
+  (when-not (= (count args) 2)
+    (throw (ex-info "Boolean numeric filters take 2 arguments."
+                    {:boolean-args args})))
+   (let [[lhs rhs] args]
+     (->> (ds/columns dataset)
+          (filter (fn [col]
+                    (let [math-env {:dataset dataset
+                                    :column-name (ds-col/column-name col)}]
+                      (op-fn (double (math-ops/eval-expr math-env lhs))
+                             (double (math-ops/eval-expr math-env rhs))))))
+          (mapv ds-col/column-name))))
+
+
+(defmacro register-numeric-boolean-filter
+  [filter-symbol]
+  `(register-column-filter!
+    ~(keyword (name filter-symbol))
+    (partial apply-numeric-column-filter ~filter-symbol)))
+
+
+(register-numeric-boolean-filter >)
+(register-numeric-boolean-filter <)
+(register-numeric-boolean-filter >=)
+(register-numeric-boolean-filter <=)
+(register-column-filter!
+ :==
+ (partial apply-numeric-column-filter =))
+
+(register-column-filter!
+ :!=
+ (partial apply-numeric-column-filter not=))

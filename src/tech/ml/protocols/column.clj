@@ -37,6 +37,12 @@ are never duplicated or copied.")
     "Return a map of stats.  Stats set is a set of the desired stats in keyword
 form.  Guaranteed support across implementations for :mean :variance :median :skew.
 Implementations should check their metadata before doing calculations.")
+  (correlation [col other-column correlation-type]
+    "Return the correlation coefficient
+Supported types are:
+:pearson
+:spearman
+:kendall")
   (column-values [col]
     "Return a 'thing convertible to a sequence' of values for this column.
 May be a java array or something else.  Likely to error on missing.")

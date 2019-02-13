@@ -255,9 +255,10 @@
      ;;If numeric column, then use this pathway.
      (if ((set primitive/datatypes) datatype)
        (let [src-data (if (and (satisfies? base/PDatatype elem-count-or-seq)
-                               (= (base/get-datatype elem-count-or-seq) datatype)
-                               (primitive/->array elem-count-or-seq))
-                        (primitive/->array elem-count-or-seq)
+                               (satisfies? primitive/PToArray elem-count-or-seq)
+                               (= (base/get-datatype elem-count-or-seq) datatype))
+                        (or (primitive/->array elem-count-or-seq)
+                            (primitive/->array-copy elem-count-or-seq))
                         (primitive/make-array-of-type datatype elem-count-or-seq options))]
          (case datatype
            :int16 (ShortColumn/create column-name ^shorts src-data)

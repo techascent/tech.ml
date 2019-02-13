@@ -13,7 +13,8 @@
             [tech.compute.cpu.typed-buffer :as cpu-typed-buffer]
             [tech.ml.dataset.compute-math-context :as compute-math-context]
             [tech.ml.dataset.seq-of-maps :as ds-seq-of-maps]
-            [tech.ml.dataset.generic-columnar-dataset :as columnar-dataset])
+            [tech.ml.dataset.generic-columnar-dataset :as columnar-dataset]
+            [tech.jna :as jna])
   (:import [tech.tablesaw.api Table ColumnType
             NumericColumn DoubleColumn
             StringColumn BooleanColumn]
@@ -147,6 +148,15 @@
                             :quartile-3 (.quartile3 col)
                             )]))
                   (into {})))))
+
+  (correlation
+    [this other-column correlation-type]
+    (let [^NumericColumn column (jna/ensure-type NumericColumn col)
+          ^NumericColumn other-column (jna/ensure-type NumericColumn (:col other-column))]
+      (case correlation-type
+        :pearson (.pearsons column other-column)
+        :spearman (.spearmans column other-column)
+        :kendall (.kendalls column other-column))))
 
   (column-values [this]
     (when-not (= 0 (dtype/ecount this))

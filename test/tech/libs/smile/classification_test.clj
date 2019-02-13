@@ -16,7 +16,7 @@
 
 (deftest fld
   (verify-cls/classify-fruit {:model-type :smile.classification/fld
-                              :classification-accuracy 0.6}))
+                              :classification-accuracy 0.4}))
 
 
 (deftest knn
@@ -74,7 +74,7 @@
 
 (deftest rda
   (verify-cls/classify-fruit {:model-type :smile.classification/regularized-discriminant-analysis
-                              :classification-accuracy 0.6}))
+                              :classification-accuracy 0.5}))
 
 
 (deftest rda-gridsearch

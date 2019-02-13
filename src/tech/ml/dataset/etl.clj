@@ -32,7 +32,20 @@
                                 [dataset options])
             {:keys [options dataset] :as retval}
             (->> pipeline
-                 (reduce pipeline-operators/apply-pipeline-operator
+                 (map-indexed vector)
+                 (reduce (fn [retval [idx op]]
+                           (try
+                             (pipeline-operators/apply-pipeline-operator retval op)
+                             (catch Throwable e
+                               (let [local-seq (->> pipeline
+                                                    (take (+ idx 2))
+                                                    (drop (max 0 (- idx 2))))]
+                                 (throw (ex-info (format "Operator[%s]:\n%s\n Failed at %s:\n%s"
+                                                         idx (with-out-str
+                                                               (clojure.pprint/pprint (vec local-seq)))
+                                                         (str op) (.getMessage e))
+                                                 {:operator op
+                                                  :error e}))))))
                          {:pipeline [] :options options :dataset dataset}))
             target-columns (set (column-filters/execute-column-filter dataset :target?))
             feature-columns (c-set/difference (set (map ds-col/column-name (ds/columns dataset)))

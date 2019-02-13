@@ -29,7 +29,7 @@ index-seq - either keyword :all or list of indexes.  May contain duplicates.")
 
 Values are in order of column-name-seq.  Duplicate names are allowed and result in
 duplicate values.")
-  (supported-stats [dataset]
+  (supported-column-stats [dataset]
     "Return the set of natively supported stats for the dataset.  This must be at least
 #{:mean :variance :median :skew}.")
   (from-prototype [dataset table-name column-seq]

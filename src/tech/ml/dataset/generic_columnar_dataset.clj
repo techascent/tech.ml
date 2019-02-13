@@ -86,7 +86,7 @@
       (->> (apply map vector col-value-seq)
            (map-indexed vector))))
 
-  (supported-stats [dataset]
+  (supported-column-stats [dataset]
     (ds-col/supported-stats (first (vals colmap))))
 
   (from-prototype [dataset table-name column-seq]

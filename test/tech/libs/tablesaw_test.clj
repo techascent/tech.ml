@@ -139,7 +139,7 @@
                       (dtype/->vector (ds/column inference-ds "OverallQual"))))))))
 
 
-(def full-aimes-pipeline
+(def full-aimes-pt-1
   '[[remove "Id"]
     ;;Replace missing values or just empty csv values with NA
     [replace-missing string? "NA"]
@@ -158,7 +158,7 @@
                      "FireplaceQu"
                      "GarageQual"
                      "GarageCond"
-                     "PoolQC"]   ["Ex" "Gd" "TA" "Fa" "Po" "NA"]]
+                     "PoolQC"]   ["NA" "Po" "Fa" "TA" "Gd" "Ex"]]
     [set-attribute ["MSSubClass" "OverallQual" "OverallCond"] :categorical? true]
     [string->number "MasVnrType" {"BrkCmn" 1
                                  "BrkFace" 1
@@ -215,6 +215,83 @@
                         (col "3SsnPorch") (col "ScreenPorch"))]])
 
 
+(def aimes-top-columns ["SalePrice"
+                        "OverallQual"
+                        "AllSF"
+                        "AllFlrsSF"
+                        "GrLivArea"
+                        "GarageCars"
+                        "ExterQual"
+                        "KitchenQual"
+                        "GarageScore"
+                        "SimplGarageScore"
+                        "GarageArea"])
+
+
+(def full-aimes-pt-2
+  ;;Drop SalePrice column of course.
+  (->> (rest aimes-top-columns)
+       (mapcat (fn [colname]
+                 [['m= (str colname "-s2") ['** ['col colname] 2]]
+                  ['m= (str colname "-s3") ['** ['col colname] 3]]
+                  ['m= (str colname "-sqrt") ['sqrt ['col colname]]]]))
+       (concat full-aimes-pt-1)
+       vec))
+
+
+(def full-aimes-pt-3
+  (->> (concat full-aimes-pt-2
+               '[[m= [and
+                      [not categorical?]
+                      [not target?]
+                      [> [abs [skew [col]]] 0.5]]
+                  (log1p (col))]
+
+                 [std-scaler [and
+                              [not categorical?]
+                              [not target?]]]])
+       (vec)))
+
+
+(deftest full-aimes-pipeline-test
+  (let [src-dataset (tablesaw/path->tablesaw-dataset
+                     "data/aimes-house-prices/train.csv")]
+    (testing "Pathway through aimes pt one is sane.  Checking skew."
+      (let [{:keys [dataset pipeline options]}
+            (etl/apply-pipeline src-dataset full-aimes-pt-1 {:target "SalePrice"})]
+       (is (= aimes-top-columns
+               (->> (get (ds/correlation-table dataset) "SalePrice")
+                    (take 11)
+                    (mapv first))))))
+    (testing "Pathway through aimes pt 2 is sane.  Checking skew."
+      (let [{:keys [dataset pipeline options]}
+            (etl/apply-pipeline src-dataset full-aimes-pt-2 {:target "SalePrice"})
+            skewed-set (set (col-filters/execute-column-filter
+                             dataset '[and
+                                       [not categorical?]
+                                       [not target?]
+                                       [> [abs [skew [col]]] 0.5]]))]
+        ;;This count seems rather high...a diff against the python stuff would be wise.
+        (is (= 67 (count skewed-set)))
+        ;;Sale price cannot be in the set as it was explicitly removed.
+        (is (not (contains? skewed-set "SalePrice")))))
+
+    (testing "Full aimes pathway is sane"
+      (let [{:keys [dataset pipeline options]}
+            (etl/apply-pipeline src-dataset full-aimes-pt-3 {:target "SalePrice"})
+            std-set (set (col-filters/execute-column-filter
+                          dataset '[and
+                                    [not categorical?]
+                                    [not target?]]))
+            mean-var-seq (->> std-set
+                              (map (comp #(ds-col/stats % [:mean :variance])
+                                         (partial ds/column dataset))))]
+        ;;Are means 0?
+        (is (m/equals (mapv :mean mean-var-seq)
+                      (vec (repeat (count mean-var-seq) 0))
+                      0.001))))))
+
+
 (defn train-test-split
   [dataset & {:keys [train-fraction]
               :or {train-fraction 0.7}}]
@@ -232,7 +309,7 @@
   (let [src-dataset (tablesaw/path->tablesaw-dataset
                      "data/aimes-house-prices/train.csv")
         {:keys [dataset pipeline options]}
-        (etl/apply-pipeline src-dataset full-aimes-pipeline {:target "SalePrice"})
+        (etl/apply-pipeline src-dataset full-aimes-pt-3 {:target "SalePrice"})
         {:keys [train-ds test-ds]} (train-test-split dataset)
         all-columns (set (map ds-col/column-name (ds/columns dataset)))
         label-keys #{"SalePrice"}
@@ -260,7 +337,6 @@
         labels (dtype/->vector (ds/column test-ds "SalePrice"))
         predictions (ml/predict model test-ds)
         loss-value (loss/rmse predictions labels)]
-    (println loss-value)
     (is (< loss-value 0.20))))
 
 

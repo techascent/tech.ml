@@ -43,7 +43,9 @@
     (ds-col/is-column? op-arg)
     (ds-col/unary-op (ds-col/math-context op-arg) op-env op-arg op-kwd)
     (number? op-arg)
-    (double (scalar-fn (double op-arg)))))
+    (double (scalar-fn (double op-arg)))
+    :else
+    (throw (ex-info (format "Unrecognized unary argument type: %s" op-arg) {}))))
 
 
 (defn register-unary-op!
@@ -55,6 +57,7 @@
 (register-unary-op! :ceil #(Math/ceil (double %)))
 (register-unary-op! :floor #(Math/floor (double %)))
 (register-unary-op! :sqrt #(Math/sqrt (double %)))
+(register-unary-op! :abs #(Math/abs (double %)))
 (register-unary-op! :- -)
 
 
@@ -80,8 +83,12 @@
 
 (doseq [stats-entry potential-stats]
   (register-math-op! stats-entry :unary-column
-                     #(-> (ds-col/stats % #{stats-entry})
-                          :stats-entry)))
+                     (fn [math-env first-arg]
+                       (if-let [retval
+                                (-> (ds-col/stats first-arg #{stats-entry})
+                                    stats-entry)]
+                         (double retval)
+                         (throw (ex-info "Stats call returned nil" {}))))))
 
 
 (defn apply-binary-op
@@ -106,3 +113,27 @@
 (register-binary-op! :* *)
 (register-binary-op! :/ /)
 (register-binary-op! :** #(Math/pow (double %1) (double %2)))
+
+
+(defn eval-expr
+  "Tiny simple interpreter."
+  [{:keys [dataset column-name] :as env} math-expr]
+  (cond
+    (string? math-expr)
+    math-expr
+    (number? math-expr)
+    math-expr
+    (sequential? math-expr)
+    (let [fn-name (first math-expr)
+          ;;Force errors early
+          expr-args (mapv (partial eval-expr env) (rest math-expr))
+          {op-type :type
+           operand :operand} (get-operand (keyword (name fn-name)))]
+      (try
+        (apply operand env expr-args)
+        (catch Throwable e
+          (throw (ex-info (format "Operator %s failed:\n%s" math-expr (.getMessage e))
+                          {:math-expression math-expr
+                           :error e})))))
+    :else
+    (throw (ex-info (format "Malformed expression %s" math-expr) {}))))

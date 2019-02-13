@@ -7,7 +7,7 @@
   length can be manipulated.  Operatings like auto-scaling, however, will read the
   dataset into memory."
   (:require [tech.datatype :as dtype]
-            [tech.ml.protocols.column :as col-proto]
+            [tech.ml.dataset.column :as ds-col]
             [tech.ml.protocols.dataset :as ds-proto]
             [tech.parallel :as parallel]
             [clojure.core.matrix :as m]
@@ -85,11 +85,11 @@ duplicate values."
   (ds-proto/index-value-seq dataset))
 
 
-(defn supported-dataset-stats
+(defn supported-column-stats
   "Return the set of natively supported stats for the dataset.  This must be at least
 #{:mean :variance :median :skew}."
   [dataset]
-  (ds-proto/supported-stats dataset))
+  (ds-proto/supported-column-stats dataset))
 
 
 (defn from-prototype
@@ -125,7 +125,7 @@ the correct type."
                          (mapcat (fn [dataset]
                                    (->> (columns dataset)
                                         (mapv (fn [col]
-                                                (assoc (col-proto/metadata col)
+                                                (assoc (ds-col/metadata col)
                                                        :column
                                                        col
                                                        :table-name (dataset-name dataset)))))))
@@ -139,11 +139,11 @@ the correct type."
                  (let [columns (map :column columns)
                        newcol-ecount (apply + 0 (map m/ecount columns))
                        first-col (first columns)
-                       new-col (col-proto/new-column first-col
+                       new-col (ds-col/new-column first-col
                                                      (dtype/get-datatype first-col)
                                                      newcol-ecount
-                                                     (col-proto/metadata first-col))]
-                   (dtype/copy-raw->item! (map col-proto/column-values columns)
+                                                     (ds-col/metadata first-col))]
+                   (dtype/copy-raw->item! (map ds-col/column-values columns)
                                           new-col 0
                                           {:unchecked? true})
                    new-col)))
@@ -158,6 +158,33 @@ the correct type."
               (apply map-fn col-values)))))
 
 
+(defn correlation-table
+  "Return a map of colname->list of sorted tuple of [colname, coefficient].
+  Sort is:
+  (sort-by (comp #(Math/abs (double %)) second) >)
+
+  Thus the first entry is:
+  [colname, 1.0]
+
+  There are three possible correlation types:
+  :pearson
+  :spearman
+  :kendall
+
+  :pearson is the default."
+  [dataset & [correlation-type]]
+  (let [colseq (columns dataset)
+        correlation-type (or :pearson correlation-type)]
+    (->> (for [lhs colseq]
+           [(ds-col/column-name lhs)
+            (->> colseq
+                 (map (fn [rhs]
+                        [(ds-col/column-name rhs)
+                         (ds-col/correlation lhs rhs correlation-type)]))
+                 (sort-by (comp #(Math/abs (double %)) second) >))])
+         (into {}))))
+
+
 (defn ->flyweight
   "Convert dataset to seq-of-maps dataset.  Flag indicates if errors should be thrown on
   missing values or if nil should be inserted in the map.  IF a label map is passed in
@@ -169,7 +196,7 @@ the correct type."
               :or {column-name-seq :all
                    error-on-missing-values? true}}]
   (let [dataset (select dataset column-name-seq :all)
-        column-name-seq (map col-proto/column-name (columns dataset))
+        column-name-seq (map ds-col/column-name (columns dataset))
         inverse-label-map (->> label-map
                                (map (juxt first (comp c-set/map-invert second)))
                                (into {}))
@@ -183,9 +210,9 @@ the correct type."
                   columns (columns dataset)]
               (for [idx (range ecount)]
                 (->> (for [col columns]
-                       [(col-proto/column-name col)
-                        (when-not (col-proto/is-missing? col idx)
-                          (col-proto/get-column-value col idx))])
+                       [(ds-col/column-name col)
+                        (when-not (ds-col/is-missing? col idx)
+                          (ds-col/get-column-value col idx))])
                      (remove nil?)
                      (into {}))))))]
     (if (seq inverse-label-map)
@@ -343,7 +370,7 @@ the correct type."
   (if-let [label-column (when (= (count label-columns) 1)
                           (first label-columns))]
     (let [column-values (-> (column dataset label-column)
-                            col-proto/column-values)]
+                            ds-col/column-values)]
       (if-let [label-map (get label-map label-column)]
         (let [inverse-map (c-set/map-invert label-map)]
           (->> column-values
