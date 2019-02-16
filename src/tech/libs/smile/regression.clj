@@ -196,7 +196,7 @@
    {:options [{:name :forgetting-factor
                :default 1.0
                :type :float64}]
-    :gridsearch-options {:forgetting-factor (ml-gs/exp [1e-2 1e2])}
+    :gridsearch-options {:forgetting-factor (ml-gs/exp [1e-2 1])}
     :datatypes #{:float64-array}
     :class-name "RLS"}
 

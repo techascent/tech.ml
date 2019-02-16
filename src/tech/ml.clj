@@ -142,7 +142,7 @@ first try."
   ;;Should do row-major conversion here and make it work later.  We specifically
   ;;know the feature and labels can't change.
   (let [dataset-seq (if (and k-fold (> (int k-fold) 1))
-                      (dataset/->k-fold-datasets dataset k-fold options)
+                      (vec (dataset/->k-fold-datasets dataset k-fold options))
                       [(dataset/->train-test-split dataset options)])]
     (->> (ml-gs/gridsearch options)
          (take gridsearch-depth)
