@@ -1,4 +1,4 @@
-(ns tech.ml.exampel.classify
+(ns tech.ml.example.classify
   (:require [tech.ml.example.svm-datasets :as datasets]
             [tech.ml :as ml]
             [tech.ml.dataset :as ml-dataset]
