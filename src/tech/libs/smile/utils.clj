@@ -1,7 +1,8 @@
 (ns tech.libs.smile.utils
   (:require [tech.datatype :as dtype]
             [tech.ml.dataset :as dataset]
-            [tech.libs.tablesaw.datatype.tablesaw :as dtype-tbl])
+            [tech.ml.utils :as ml-utils])
+
   (:import [java.lang.reflect Constructor]
            [smile.data Attribute NominalAttribute NumericAttribute]))
 
@@ -204,7 +205,7 @@
                                (let [nominal? (boolean
                                                (get-in options [:dataset-column-metadata :post-pipeline
                                                                 feature-key :categorical?]))
-                                     att-name (dtype-tbl/column-safe-name feature-key)
+                                     att-name (ml-utils/column-safe-name feature-key)
                                      attribute (if nominal?
                                                  (NominalAttribute. att-name)
                                                  (NumericAttribute. att-name))]
