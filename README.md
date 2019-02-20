@@ -136,9 +136,9 @@ user> (ml/predict model (:dataset infer-pipeline))
 
 ### Gridsearching
 
-Gridsearching is often the best way to explore a dataset because you don't need to figure out
-exactly how details of the dataset map to hyperparameters of the models.  Most models in the
-tech.ml system allow gridsearching (xgboost certainly does):
+Gridsearching is often the best way to explore a dataset because you don't need to
+figure out exactly how details of the dataset map to hyperparameters of the models.
+Most models in the tech.ml system allow gridsearching (xgboost certainly does):
 
 ```clojure
 
