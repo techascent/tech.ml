@@ -55,10 +55,10 @@
                             :range :>0}]
                  :datatypes #{:float64-array :sparse :int32-array}
                  :class-name "ElasticNet"
-                 :gridsearch-options {:lambda1 (ml-gs/exp [1e-4 1e2])
+                 :gridsearch-options {:lambda1 (ml-gs/exp [1e-2 1e2])
                                       :lambda2 (ml-gs/exp [1e-4 1e2])
                                       :tolerance (ml-gs/exp [1e-6 1e-2])
-                                      :max-iterations (ml-gs/linear-long [10 2000])}}
+                                      :max-iterations (ml-gs/exp [1e4 1e7])}}
    :gaussian-process {:options [{:name :kernel
                                   :type :mercer-kernel
                                  :default {:kernel-type :gaussian}}
@@ -142,9 +142,9 @@
                :type :int32
                :default 1000
                :range :>0}]
-    :gridsearch-options {:lambda (ml-gs/exp [1e-4 1e2])
+    :gridsearch-options {:lambda (ml-gs/exp [1e-4 1e1])
                          :tolerance (ml-gs/exp [1e-6 1e-2])
-                         :max-iterations (ml-gs/linear-long [10 2000])}
+                         :max-iterations (ml-gs/linear-long [1e4 1e7])}
     :class-name "LASSO"
     :datatypes #{:float64-array}}
 
@@ -154,7 +154,7 @@
                :type :float64
                :default 1.0
                :range :>0}]
-    :gridsearch-options {:lambda (ml-gs/exp [1e-4 1e2])}
+    :gridsearch-options {:lambda (ml-gs/exp [1e-4 1e4])}
     :class-name "RidgeRegression"
     :datatypes #{:float64-array}}
 
