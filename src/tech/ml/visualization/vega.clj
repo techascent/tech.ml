@@ -16,18 +16,21 @@
 
 
 (defn accuracy-graph
-  [gridsearch-results]
-  {:repeat {:column [:predict-time :train-time]}
-   :spec {:data {:values (map fixup-model-type gridsearch-results)}
-          :mark :point
-          :encoding {:y {:field :average-accuracy
-                         :type :quantitative}
-                     :x {:field {:repeat :column}
-                         :type :quantitative}
-                     :color {:field :model-name
-                             :type :nominal}
-                     :shape {:field :model-name
-                             :type :nominal}}}})
+  [gridsearch-results & {:keys [x-scale y-scale]}]
+  [:vega-lite (merge {:data {:values (map fixup-model-type gridsearch-results)}
+                      :mark :point
+                      :encoding {:y (merge {:field :average-loss
+                                            :type :quantitative}
+                                           (when y-scale
+                                             {:scale {:domain y-scale}}))
+                                 :x {:field :model-name
+                                     :type :nominal}
+                                 :color {:field :model-name
+                                         :type :nominal}
+                                 :shape {:field :model-name
+                                         :type :nominal}}}
+                     (when y-scale
+                       {:transform [{:filter {:field :average-loss :range y-scale}}]}))])
 
 
 (defn add-gridsearch-keys
@@ -104,3 +107,36 @@
                                                       :type :quantitative}
                                                   :y {:field {:repeat :column}
                                                       :type :nominal}}}}))))])))))
+
+
+(defn graph-regression-verification-results
+  "There are two possible target keys, predictions or residuals.
+  These are graphed against labels (labels on the y axis).  Custom scales
+  may be used and only results within the range of those scales will be displaced
+  and the graph will be clipped to that scale."
+  [verification-results & {:keys [target-key x-scale y-scale]
+                           :or {target-key :predictions}}]
+  (when-not (and (contains? verification-results :labels)
+                 (contains? verification-results target-key))
+    (throw (ex-info "Results do not appear to contain correct information."
+                    {:result-keys (keys verification-results)})))
+  (let [graph-data (map (fn [label arg]
+                          {:labels label
+                           target-key arg})
+                        (get verification-results :labels)
+                        (get verification-results target-key))]
+    [:vega-lite (merge {:data {:values graph-data}
+                        :mark :point
+                        :encoding {:y (merge {:field :labels
+                                              :type :quantitative}
+                                             (when y-scale
+                                               {:scale {:domain y-scale}}))
+                                   :x (merge {:field target-key
+                                              :type :quantitative}
+                                             (when x-scale
+                                               {:scale {:domain x-scale}}))}}
+                       (when (or x-scale y-scale)
+                         {:transform (concat (when y-scale
+                                               [{:filter {:field :labels :range y-scale}}])
+                                             (when x-scale
+                                               [{:filter {:field target-key :range x-scale}}]))}))]))
