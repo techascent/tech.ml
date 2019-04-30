@@ -1,7 +1,7 @@
 (ns tech.libs.smile.kernels
   (:require [clojure.reflect :refer [reflect]]
             [camel-snake-kebab.core :refer [->kebab-case]]
-            [tech.datatype :as dtype]
+            [tech.v2.datatype :as dtype]
             [tech.libs.smile.utils :as utils])
   (:import [smile.math.kernel MercerKernel]
            [java.lang.reflect Constructor]))

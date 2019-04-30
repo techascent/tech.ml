@@ -2,7 +2,8 @@
   (:require [tech.verify.ml.classification :as verify-cls]
             [tech.libs.smile.classification]
             [tech.ml.utils :as utils]
-            [tech.ml.dataset.etl :as etl]
+            [tech.ml.dataset :as ds]
+            [tech.ml.dataset.pipeline :as dsp]
             [tech.ml :as ml]
             [clojure.test :refer :all])
   (:import [ch.qos.logback.classic Logger]
@@ -49,11 +50,11 @@
 
 (deftest svm-binary
   (testing "binary classifiers do not throw"
-    (let [{:keys [dataset options]} (etl/apply-pipeline (concat (repeat 10 {:features 1 :label :a})
-                                                                (repeat 10 {:features -1 :label :b}))
-                                                        '[[string->number [categorical?]]]
-                                                        {:target :label})
-          model (ml/train (merge options {:model-type :smile.classification/svm}) dataset)]
+    (let [dataset (-> (ds/->dataset (concat (repeat 10 {:features 1 :label :a})
+                                            (repeat 10 {:features -1 :label :b})))
+                      (dsp/string->number)
+                      (ds/set-inference-target :label))
+          model (ml/train {:model-type :smile.classification/svm} dataset)]
       (is (not (nil? model))))))
 
 

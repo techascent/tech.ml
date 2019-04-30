@@ -1,6 +1,7 @@
 (ns tech.libs.smile.utils
-  (:require [tech.datatype :as dtype]
+  (:require [tech.v2.datatype :as dtype]
             [tech.ml.dataset :as dataset]
+            [tech.ml.dataset.options :as ds-options]
             [tech.ml.utils :as ml-utils])
 
   (:import [java.lang.reflect Constructor]
@@ -255,9 +256,9 @@
 
 (defn options->num-classes
   ^long [options]
-  (dataset/options->num-classes options))
+  (ds-options/num-classes options))
 
 
 (defn options->feature-ecount
   ^long [options]
-  (dataset/options->feature-ecount options))
+  (ds-options/feature-ecount options))

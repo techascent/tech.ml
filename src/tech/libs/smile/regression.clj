@@ -5,7 +5,7 @@
             [tech.ml.registry :as registry]
             ;;Kernels have to be loaded
             [tech.libs.smile.kernels]
-            [tech.datatype :as dtype]
+            [tech.v2.datatype :as dtype]
             [tech.libs.smile.utils :as utils]
             [tech.ml.gridsearch :as ml-gs]
             [clojure.reflect :refer [reflect]])

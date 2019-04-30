@@ -1,7 +1,8 @@
 (ns tech.ml
   (:require [tech.ml.registry :as registry]
             [tech.ml.protocols.system :as system-proto]
-            [tech.ml.dataset :as dataset]
+            [tech.ml.dataset :as ds]
+            [tech.ml.dataset.column :as ds-col]
             [tech.ml.dataset.pipeline.column-filters :as cf]
             [tech.ml.gridsearch :as ml-gs]
             [tech.parallel :as parallel]
@@ -34,21 +35,29 @@
   ([options feature-columns label-columns dataset]
    (let [feature-columns (normalize-column-seq feature-columns)
          label-columns (normalize-column-seq label-columns)
-         dataset (-> (dataset/->dataset dataset)
-                     (dataset/select (concat feature-columns label-columns) :all)
-                     (dataset/set-inference-target label-columns))]
+         dataset (-> (ds/->dataset dataset)
+                     (ds/select (concat feature-columns label-columns) :all)
+                     (ds/set-inference-target label-columns))]
      (when-not (> (count feature-columns) 0)
        (throw (ex-info "Must be at least one feature column to train"
                        {:feature-columns feature-columns})))
      (when-not (> (count label-columns) 0)
        (throw (ex-info "Must be at least one label column to train"
                        {:label-columns label-columns})))
+     ;;We expect the users to serialize the options map so we want to save
+     ;;enough relevant details of the dataset into the map that some portion of the
+     ;;training process is accurately captured.
      (let [options (assoc options
+                          :dataset-shape (dtype/shape dataset)
                           :feature-columns feature-columns
                           :label-columns label-columns
-                          :label-map (dataset/dataset-label-map dataset))
+                          :label-map (ds/dataset-label-map dataset)
+                          :column-map (->> (ds/columns dataset)
+                                           (map (comp (juxt :name identity)
+                                                      ds-col/metadata))
+                                           (into {})))
            ml-system (registry/system (:model-type options))
-           model (system-proto/train ml-system options (dataset/->dataset dataset {}))]
+           model (system-proto/train ml-system options (ds/->dataset dataset {}))]
        {:model model
         :options options
         :id (UUID/randomUUID)})))
@@ -71,7 +80,7 @@
   (let [feature-columns (:feature-columns options)
         ;;Order columns identical to training and remove anything else.
         ;;The select implicitly checks that the columns exist.
-        dataset (-> (dataset/select (dataset/->dataset dataset)
+        dataset (-> (ds/select (ds/->dataset dataset)
                                     feature-columns :all))]
     (let [ml-system (registry/system (:model-type options))]
       (system-proto/predict ml-system options model dataset))))
@@ -81,7 +90,7 @@
   "Given a sequence of {:train-ds ...} datasets, produce a sequence of:
   {:model ...}
   train-ds is removed to keep memory usage as low as possible.
-  See dataset/dataset->k-fold-datasets"
+  See ds/dataset->k-fold-datasets"
   [options dataset-seq]
   (->> dataset-seq
        (map (fn [{:keys [train-ds] :as dataset-entry}]
@@ -106,7 +115,7 @@
                     (let [{predictions :retval
                            predict-time :milliseconds}
                           (utils/time-section (predict train-result test-ds))
-                          labels (dataset/labels test-ds)]
+                          labels (ds/labels test-ds)]
                       (merge (dissoc train-result :test-ds)
                              {:predict-time predict-time
                               :loss (loss-fn predictions labels)})))))
@@ -154,8 +163,8 @@ first try."
   ;;Should do row-major conversion here and make it work later.  We specifically
   ;;know the feature and labels can't change.
   (let [dataset-seq (if (and k-fold (> (int k-fold) 1))
-                      (vec (dataset/->k-fold-datasets dataset k-fold options))
-                      [(dataset/->train-test-split dataset options)])]
+                      (vec (ds/->k-fold-datasets dataset k-fold options))
+                      [(ds/->train-test-split dataset options)])]
     (->> (ml-gs/gridsearch options)
          (take gridsearch-depth)
          (parallel/queued-pmap
