@@ -45,7 +45,8 @@
                        {:label-columns label-columns})))
      (let [options (assoc options
                           :feature-columns feature-columns
-                          :label-columns label-columns)
+                          :label-columns label-columns
+                          :label-map (dataset/dataset-label-map dataset))
            ml-system (registry/system (:model-type options))
            model (system-proto/train ml-system options (dataset/->dataset dataset {}))]
        {:model model
@@ -70,8 +71,8 @@
   (let [feature-columns (:feature-columns options)
         ;;Order columns identical to training and remove anything else.
         ;;The select implicitly checks that the columns exist.
-        dataset (dataset/select (dataset/->dataset dataset)
-                                feature-columns :all)]
+        dataset (-> (dataset/select (dataset/->dataset dataset)
+                                    feature-columns :all))]
     (let [ml-system (registry/system (:model-type options))]
       (system-proto/predict ml-system options model dataset))))
 
@@ -105,7 +106,7 @@
                     (let [{predictions :retval
                            predict-time :milliseconds}
                           (utils/time-section (predict train-result test-ds))
-                          labels (dataset/labels test-ds options)]
+                          labels (dataset/labels test-ds)]
                       (merge (dissoc train-result :test-ds)
                              {:predict-time predict-time
                               :loss (loss-fn predictions labels)})))))

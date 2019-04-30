@@ -24,8 +24,12 @@
         train-dataset (->> (repeatedly observe)
                            (take 1000))
         test-dataset (for [x (range -9.9 10 0.1)] {:x x :y (f x)})
-        train-dataset (mini-pipeline train-dataset)
-        test-dataset (mini-pipeline test-dataset)]
+        {train-dataset :dataset
+         train-context :context} (dsp/pipeline-train-context
+                                  (mini-pipeline train-dataset))
+        {test-dataset :dataset} (dsp/pipeline-inference-context
+                                 train-context
+                                 (mini-pipeline test-dataset))]
     {:train-ds train-dataset
      :test-ds test-dataset}))
 
@@ -39,8 +43,6 @@
         model (ml/train options train-dataset)
         test-output (ml/predict model test-dataset)
         mse (loss/mse test-output (dataset/labels test-dataset))]
-    (println test-dataset)
-    (println (dataset/labels test-dataset))
     (is (< mse (double accuracy)))))
 
 

@@ -8,7 +8,8 @@
             [tech.ml.utils :as utils]
             [tech.ml.gridsearch :as ml-gs]
             [clojure.string :as s]
-            [tech.ml.dataset :as dataset])
+            [tech.ml.dataset :as dataset]
+            [tech.ml.dataset.options :as ds-options])
   (:refer-clojure :exclude [load])
   (:import [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
            [ml.dmlc.xgboost4j LabeledPoint]
@@ -222,7 +223,7 @@
           retval (->> (dataset->dmatrix dataset (dissoc options :label-columns))
                       (.predict model))]
       (if (= "multi:softprob" (get-objective options))
-        (let [inverse-label-map (dataset/inference-target-label-inverse-map dataset)
+        (let [inverse-label-map (ds-options/inference-target-label-inverse-map options)
               ordered-labels (->> inverse-label-map
                                   (sort-by first)
                                   (mapv second))

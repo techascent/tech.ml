@@ -36,7 +36,8 @@
   (-> (fruit-dataset)
       (dataset/remove-columns [:fruit-subtype :fruit-label])
       (dsp/string->number)
-      (dsp/range-scale #(cf/not % (cf/categorical? %)))))
+      (dsp/range-scale #(cf/not % (cf/categorical? %)))
+      (dataset/set-inference-target :fruit-name)))
 
 
 (defn classify-fruit
@@ -46,7 +47,7 @@
         {:keys [train-ds test-ds]} (dataset/->train-test-split dataset {})
         model (ml/train options train-ds)
         test-output (ml/predict model test-ds)
-        labels (dataset/labels test-ds options)]
+        labels (dataset/labels test-ds)]
 
     ;;Accuracy gets *better* as it increases.  This is the opposite of a loss!!
     (is (> (loss/classification-accuracy test-output labels)
