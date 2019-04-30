@@ -1,8 +1,7 @@
 (ns tech.ml.gridsearch
   "https://en.wikipedia.org/wiki/Sobol_sequence
   Used to gridsearch efficiently without getting fancy."
-  (:require [tech.datatype :as dtype]
-            [clojure.set :as c-set])
+  (:require [clojure.set :as c-set])
   (:import [org.apache.commons.math3.random SobolSequenceGenerator]))
 
 

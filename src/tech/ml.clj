@@ -2,9 +2,10 @@
   (:require [tech.ml.registry :as registry]
             [tech.ml.protocols.system :as system-proto]
             [tech.ml.dataset :as dataset]
+            [tech.ml.dataset.pipeline.column-filters :as cf]
             [tech.ml.gridsearch :as ml-gs]
             [tech.parallel :as parallel]
-            [tech.datatype :as dtype]
+            [tech.v2.datatype :as dtype]
             [clojure.set :as c-set]
             [tech.ml.utils :as utils])
   (:import [java.util UUID]))
@@ -30,22 +31,30 @@
   {:model - direct result of system-proto/train
    :options - options used to train model
    :id - random UUID generated}"
-  ([options dataset]
-   (when-not (> (count (:feature-columns options)) 0)
-     (throw (ex-info "Must be at least one feature column to train"
-                     {:feature-columns (get options :feature-columns)})))
-   (when-not (> (count (:label-columns options)) 0)
-     (throw (ex-info "Must be at least one label column to train"
-                     {:label-columns (get options :label-columns)})))
-   (let [ml-system (registry/system (:model-type options))
-         model (system-proto/train ml-system options (dataset/->dataset dataset {}))]
-     {:model model
-      :options options
-      :id (UUID/randomUUID)}))
   ([options feature-columns label-columns dataset]
-   (train (assoc options
-                 :feature-columns (normalize-column-seq feature-columns)
-                 :label-columns (normalize-column-seq label-columns))
+   (let [feature-columns (normalize-column-seq feature-columns)
+         label-columns (normalize-column-seq label-columns)
+         dataset (-> (dataset/->dataset dataset)
+                     (dataset/select (concat feature-columns label-columns) :all)
+                     (dataset/set-inference-target label-columns))]
+     (when-not (> (count feature-columns) 0)
+       (throw (ex-info "Must be at least one feature column to train"
+                       {:feature-columns feature-columns})))
+     (when-not (> (count label-columns) 0)
+       (throw (ex-info "Must be at least one label column to train"
+                       {:label-columns label-columns})))
+     (let [options (assoc options
+                          :feature-columns feature-columns
+                          :label-columns label-columns)
+           ml-system (registry/system (:model-type options))
+           model (system-proto/train ml-system options (dataset/->dataset dataset {}))]
+       {:model model
+        :options options
+        :id (UUID/randomUUID)})))
+  ([options dataset]
+   (train options
+          (or (:feature-columns options) (cf/feature? dataset))
+          (or (:label-columns options) (cf/target? dataset))
           dataset)))
 
 
@@ -58,11 +67,13 @@
 
   If regression, returns the sequence of predicated values."
   [{:keys [options model] :as train-result} dataset]
-  (when-not (> (count (:feature-columns options)) 0)
-     (throw (ex-info "Must be at least one feature column to train"
-                     {:feature-columns (get options :feature-columns)})))
-  (let [ml-system (registry/system (:model-type options))]
-    (system-proto/predict ml-system options model dataset)))
+  (let [feature-columns (:feature-columns options)
+        ;;Order columns identical to training and remove anything else.
+        ;;The select implicitly checks that the columns exist.
+        dataset (dataset/select (dataset/->dataset dataset)
+                                feature-columns :all)]
+    (let [ml-system (registry/system (:model-type options))]
+      (system-proto/predict ml-system options model dataset))))
 
 
 (defn dataset-seq->dataset-model-seq
