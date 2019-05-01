@@ -9,12 +9,14 @@ Library to encapsulate a few core concepts of techascent system.
 
 ### Dataset Pipeline Processing
 
-Dataset ETL is a repeatable processing that stores data so that doing inference later is automatic.
+Dataset ETL is repeatable processing that stores data so that doing inference later is
+automatic.
 
 1.  Build your ETL pipeline.
-2.  Apply to training dataset.  Result is a new pipeline with things that min,max per column stored or even trained models.
+2.  Apply to training dataset.  Result is a new pipeline with things that min,max per
+    column stored or even trained models.
 3.  Train, gridsearch, get a model.
-4.  Use ETL pipeline returned from (2) with no modification to apply to new inference samples.
+4.  Build an inference pipeline using pipeline from step 1 with some augmentations.
 5.  Infer.
 
 
@@ -24,18 +26,20 @@ Checkout the [unit tests](test/tech/libs/tablesaw_test.clj) and [example pipelin
 ### ML Is Functional
 
 
-Train is a function that takes a map of options and a sequence of data and returns a new map.
-Nothing special about it aside from it figures out the subsystem from one of the keys in the
-map of options.
+Train is a function that takes a map of options and a sequence of data and returns a new
+map.  Nothing special about it aside from it figures out the subsystem from one of the
+keys in the map of options.
 
-The returned map contains a uuid ID so you can record your model ID somewhere and find it later.
+The returned map contains a uuid ID so you can record your model ID somewhere and find
+it later.
 
 ### Example
 
 
 ```clojure
-user>
-:tech.resource.gc Reference thread starting (require '[tech.verify.ml.classification :as classify-verify])
+user> (require '[tech.verify.ml.classification :as classify-verify])
+
+:tech.resource.gc Reference thread starting 
 nil
 user> (require '[tech.libs.xgboost])
 nil
