@@ -36,7 +36,7 @@
   (-> (fruit-dataset)
       (dataset/remove-columns [:fruit-subtype :fruit-label])
       (dsp/string->number)
-      (dsp/range-scale #(cf/not % (cf/categorical? %)))
+      (dsp/range-scale #(cf/not cf/categorical?))
       (dataset/set-inference-target :fruit-name)))
 
 
