@@ -7,6 +7,7 @@
             [tech.ml.gridsearch :as ml-gs]
             [tech.parallel :as parallel]
             [tech.v2.datatype :as dtype]
+            [tech.v2.datatype.casting :as casting]
             [clojure.set :as c-set]
             [tech.ml.utils :as utils])
   (:import [java.util UUID]))
@@ -33,6 +34,10 @@
    :options - options used to train model
    :id - random UUID generated}"
   ([options feature-columns label-columns dataset]
+   (when-not (->> (ds/columns dataset)
+                  (map dtype/get-datatype)
+                  (every? casting/numeric-type?))
+     (throw (ex-info "Currently no systems can handle non-numeric data." {})))
    (let [feature-columns (normalize-column-seq feature-columns)
          label-columns (normalize-column-seq label-columns)
          dataset (-> (ds/->dataset dataset)
@@ -81,7 +86,7 @@
         ;;Order columns identical to training and remove anything else.
         ;;The select implicitly checks that the columns exist.
         dataset (-> (ds/select (ds/->dataset dataset)
-                                    feature-columns :all))]
+                               feature-columns :all))]
     (let [ml-system (registry/system (:model-type options))]
       (system-proto/predict ml-system options model dataset))))
 
@@ -143,7 +148,7 @@
 ;;The gridsearch error reporter is called when there is an error during gridsearch.
 ;;It is called like so:
 ;;(*gridsearch-error-reporter options-map error)
-(def ^:dynamic *gridsearch-error-reporter* nil)
+(def ^:dynamic *gridsearch-error-reporter* println)
 
 
 (defn gridsearch
@@ -160,6 +165,14 @@ first try."
          k-fold 5}
     :as options}
    loss-fn dataset]
+  (when-not (->> (ds/columns dataset)
+                 (map dtype/get-datatype)
+                 (every? casting/numeric-type?))
+    (throw (ex-info "Currently no systems can handle non-numeric data."
+                    {:non-numeric-columns
+                     (->> (ds/columns dataset)
+                          (map ds-col/metadata)
+                          (filter #(= :string (:datatype %))))})))
   ;;Should do row-major conversion here and make it work later.  We specifically
   ;;know the feature and labels can't change.
   (let [dataset-seq (if (and k-fold (> (int k-fold) 1))
