@@ -3,7 +3,7 @@
   :url "http://github.com/techascent/tech.ml-base"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[techascent/tech.ml.dataset "1.0-alpha1"]
+  :dependencies [[techascent/tech.ml.dataset "1.0-alpha2-SNAPSHOT"]
                  [techascent/tech.io "2.8"]
                  [ml.dmlc/xgboost4j "0.81"]]
 

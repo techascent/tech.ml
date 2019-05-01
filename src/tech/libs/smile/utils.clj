@@ -39,7 +39,8 @@
        set))
 
 
-(def keyword->class-types
+(defn keyword->class-types
+  []
   {:float64 Double/TYPE
    :int32 Integer/TYPE
    :boolean Boolean/TYPE
@@ -56,11 +57,11 @@
 
 (defmethod option->class-type :default
   [option]
-  (if-let [retval (keyword->class-types (:type option))]
+  (if-let [retval ((keyword->class-types) (:type option))]
     retval
     (throw (ex-info "Failed to find primitive class type"
                     {:cls-type (:type option)
-                     :available (keys keyword->class-types)}))))
+                     :available (keys (keyword->class-types))}))))
 
 
 (defmethod option->class-type :enumeration
