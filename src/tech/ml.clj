@@ -76,17 +76,27 @@
 (defn predict
   "Generate a sequence of predictions (inferences) from a training result.
 
-  If classification, returns a sequence of probability distributions
-  if possible.  If not, returns a map the selected option as the key and
-  the probabily as the value.
+  If classification, returns a sequence of probability distributions if possible.  If
+  not, returns a map the selected option as the key and the probabily as the value.
 
   If regression, returns the sequence of predicated values."
   [{:keys [options model] :as train-result} dataset]
   (let [feature-columns (:feature-columns options)
+        _ (when-not (seq feature-columns)
+            (throw (ex-info "Feature columns are missing" {})))
         ;;Order columns identical to training and remove anything else.
         ;;The select implicitly checks that the columns exist.
+
         dataset (-> (ds/select (ds/->dataset dataset)
-                               feature-columns :all))]
+                               feature-columns :all)
+                    (ds/update-columns
+                     feature-columns
+                     #(ds-col/set-metadata % (assoc (ds-col/metadata %)
+                                                    :column-type
+                                                    :feature))))]
+    ;;If this isn't true you are in trouble
+    (assert (= (set feature-columns)
+               (set (cf/feature? dataset))))
     (let [ml-system (registry/system (:model-type options))]
       (system-proto/predict ml-system options model dataset))))
 
