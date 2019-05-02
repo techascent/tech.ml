@@ -211,6 +211,30 @@ user> (loss/classification-loss test-output labels)
 ;; You have a model, or rather a process for generating an acceptible model.  Now we need
 ;; to codify this process such that it produces both a model and some pipeline context.
 
+
+;; We redefine our pipeline such that the processing that should only
+;; occur in training time does in fact only occur during training.
+
+
+user> (defn fruit-pipeline
+  [dataset training?]
+  (-> dataset
+      (ds/remove-columns [:fruit-subtype :fruit-label])
+      (dsp/range-scale #(cf/not cf/categorical?))
+      (dsp/pwhen
+       training?
+       #(dsp/without-recording
+         (-> %
+             (dsp/string->number :fruit-name)
+             (ds/set-inference-target :fruit-name))))))
+
+#'user/fruit-pipeline
+
+
+;; We then 'train' our pipeline on the training data producing both
+;; a training dataset to train a model and some context that will
+;; be used during inference.
+
 (def dataset-train-data (dsp/pipeline-train-context
                                (fruit-pipeline fruits true)))
 #'user/dataset-train-data
