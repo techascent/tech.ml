@@ -420,7 +420,7 @@ towards getting the best possible results for a dataset in the least amount of
 (developer) time.
 
 
-[Here](example/src/tech/ml/example/classify.clj)  is an example doing just that.
+[Here](https://github.com/cnuernber/ames-house-prices/blob/master/src/clj_ml_wkg/ames_house_prices.clj)  is an example doing just that.
 
 
 ## License
