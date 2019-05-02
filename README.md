@@ -20,7 +20,7 @@ automatic.
 5.  Infer.
 
 
-Checkout the [unit tests](test/tech/libs/tablesaw_test.clj) and [example pipeline](example/src/tech/ml/example/svm_datasets.clj).
+Checkout the [example pipeline](example/src/tech/ml/example/svm_datasets.clj) and [shotgun classification approach](exmaple/src/tech/ml/example/classify.clj).
 
 
 ### ML Is Functional
