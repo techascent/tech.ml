@@ -2,10 +2,11 @@
   "These are datasets from this page:
   https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/"
   (:require [clojure.string :as s]
-            [tech.ml.dataset.etl :as etl]
             [tech.ml.dataset.svm :as svm]
             [tech.ml.dataset :as ds]
-            [tech.ml.dataset.column :as ds-col]))
+            [tech.ml.dataset.pipeline :as dsp]
+            [tech.ml.dataset.column :as ds-col]
+            [tech.v2.datatype :as dtype]))
 
 
 (def basic-svm-pipeline '[[string->number string?]
@@ -13,15 +14,20 @@
                           ;;scale everything [-1 1]
                           [range-scaler [not categorical?]]])
 
-(def profile-pipeline '[[range-scaler [not categorical?]]])
-
 
 (defn profile-range-scaler
   [dataset]
   (dotimes [iter 100]
-    (time
-     (etl/apply-pipeline dataset profile-pipeline {:target :label})))
+    (time (dsp/range-scale dataset)))
   :ok)
+
+(defn svm-pipeline
+  [dataset]
+  (-> (ds/->dataset (:dataset dataset))
+      (dsp/string->number)
+      (dsp/replace-missing :all 0)
+      (dsp/range-scale)
+      (ds/set-inference-target :label)))
 
 
 (defn parse-svm-files
@@ -29,19 +35,16 @@
   (println "Loading" train-fname)
   (time
    (let [{train-ds :dataset
-          options :options
-          pipeline :pipeline}
-         (-> (svm/parse-svm-file train-fname :label-map label-map)
-             :dataset
-             (etl/apply-pipeline basic-svm-pipeline {:target :label}))
-         test-ds (when test-fname
-                   (-> (svm/parse-svm-file test-fname :label-map label-map)
-                       :dataset
-                       (etl/apply-pipeline pipeline {:target :label
-                                                     :recorded? true})
-                       :dataset))]
-     (merge {:train-ds train-ds
-             :options options}
+          train-context :context}
+         (dsp/pipeline-train-context
+          (-> (svm/parse-svm-file train-fname :label-map label-map)
+              svm-pipeline))
+         {test-ds :dataset} (when test-fname
+                              (dsp/pipeline-inference-context
+                               train-context
+                               (-> (svm/parse-svm-file test-fname :label-map label-map)
+                                   svm-pipeline)))]
+     (merge {:train-ds train-ds}
             (when test-ds {:test-ds test-ds})))))
 
 
