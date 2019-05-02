@@ -17,7 +17,8 @@
 
 (defn accuracy-graph
   [gridsearch-results & {:keys [x-scale y-scale]}]
-  [:vega-lite (merge {:data {:values (map fixup-model-type gridsearch-results)}
+  [:vega-lite (merge {:data {:values (->> (map fixup-model-type gridsearch-results)
+                                          (map #(select-keys % [:model-name :average-loss])))}
                       :mark :point
                       :encoding {:y (merge {:field :average-loss
                                             :type :quantitative}

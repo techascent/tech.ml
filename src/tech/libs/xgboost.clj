@@ -1,5 +1,5 @@
 (ns tech.libs.xgboost
-  (:require [tech.datatype :as dtype]
+  (:require [tech.v2.datatype :as dtype]
             [tech.parallel :as parallel]
             [tech.ml.model :as model]
             [tech.ml.protocols.system :as ml-proto]
@@ -8,7 +8,8 @@
             [tech.ml.utils :as utils]
             [tech.ml.gridsearch :as ml-gs]
             [clojure.string :as s]
-            [tech.ml.dataset :as dataset])
+            [tech.ml.dataset :as dataset]
+            [tech.ml.dataset.options :as ds-options])
   (:refer-clojure :exclude [load])
   (:import [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
            [ml.dmlc.xgboost4j LabeledPoint]
@@ -185,7 +186,7 @@
           early-stopping-round (when (:early-stopping-round options)
                                  (int (:early-stopping-round options)))
           label-map (when (multiclass-objective? objective)
-                      (dataset/options->label-map options))
+                      (dataset/inference-target-label-map dataset))
           params (->> (-> (dissoc options :model-type :watches)
                           (assoc :objective objective))
                       ;;Adding in some defaults
@@ -222,7 +223,7 @@
           retval (->> (dataset->dmatrix dataset (dissoc options :label-columns))
                       (.predict model))]
       (if (= "multi:softprob" (get-objective options))
-        (let [inverse-label-map (dataset/options->label-inverse-map options)
+        (let [inverse-label-map (ds-options/inference-target-label-inverse-map options)
               ordered-labels (->> inverse-label-map
                                   (sort-by first)
                                   (mapv second))

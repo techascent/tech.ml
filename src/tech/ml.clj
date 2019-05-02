@@ -1,10 +1,13 @@
 (ns tech.ml
   (:require [tech.ml.registry :as registry]
             [tech.ml.protocols.system :as system-proto]
-            [tech.ml.dataset :as dataset]
+            [tech.ml.dataset :as ds]
+            [tech.ml.dataset.column :as ds-col]
+            [tech.ml.dataset.pipeline.column-filters :as cf]
             [tech.ml.gridsearch :as ml-gs]
             [tech.parallel :as parallel]
-            [tech.datatype :as dtype]
+            [tech.v2.datatype :as dtype]
+            [tech.v2.datatype.casting :as casting]
             [clojure.set :as c-set]
             [tech.ml.utils :as utils])
   (:import [java.util UUID]))
@@ -30,46 +33,79 @@
   {:model - direct result of system-proto/train
    :options - options used to train model
    :id - random UUID generated}"
-  ([options dataset]
-   (when-not (> (count (:feature-columns options)) 0)
-     (throw (ex-info "Must be at least one feature column to train"
-                     {:feature-columns (get options :feature-columns)})))
-   (when-not (> (count (:label-columns options)) 0)
-     (throw (ex-info "Must be at least one label column to train"
-                     {:label-columns (get options :label-columns)})))
-   (let [ml-system (registry/system (:model-type options))
-         model (system-proto/train ml-system options (dataset/->dataset dataset {}))]
-     {:model model
-      :options options
-      :id (UUID/randomUUID)}))
   ([options feature-columns label-columns dataset]
-   (train (assoc options
-                 :feature-columns (normalize-column-seq feature-columns)
-                 :label-columns (normalize-column-seq label-columns))
+   (when-not (->> (ds/columns dataset)
+                  (map dtype/get-datatype)
+                  (every? casting/numeric-type?))
+     (throw (ex-info "Currently no systems can handle non-numeric data." {})))
+   (let [feature-columns (normalize-column-seq feature-columns)
+         label-columns (normalize-column-seq label-columns)
+         dataset (-> (ds/->dataset dataset)
+                     (ds/select (concat feature-columns label-columns) :all)
+                     (ds/set-inference-target label-columns))]
+     (when-not (> (count feature-columns) 0)
+       (throw (ex-info "Must be at least one feature column to train"
+                       {:feature-columns feature-columns})))
+     (when-not (> (count label-columns) 0)
+       (throw (ex-info "Must be at least one label column to train"
+                       {:label-columns label-columns})))
+     ;;We expect the users to serialize the options map so we want to save
+     ;;enough relevant details of the dataset into the map that some portion of the
+     ;;training process is accurately captured.
+     (let [options (assoc options
+                          :dataset-shape (dtype/shape dataset)
+                          :feature-columns feature-columns
+                          :label-columns label-columns
+                          :label-map (ds/dataset-label-map dataset)
+                          :column-map (->> (ds/columns dataset)
+                                           (map (comp (juxt :name identity)
+                                                      ds-col/metadata))
+                                           (into {})))
+           ml-system (registry/system (:model-type options))
+           model (system-proto/train ml-system options (ds/->dataset dataset {}))]
+       {:model model
+        :options options
+        :id (UUID/randomUUID)})))
+  ([options dataset]
+   (train options
+          (or (:feature-columns options) (cf/feature? dataset))
+          (or (:label-columns options) (cf/target? dataset))
           dataset)))
 
 
 (defn predict
   "Generate a sequence of predictions (inferences) from a training result.
 
-  If classification, returns a sequence of probability distributions
-  if possible.  If not, returns a map the selected option as the key and
-  the probabily as the value.
+  If classification, returns a sequence of probability distributions if possible.  If
+  not, returns a map the selected option as the key and the probabily as the value.
 
   If regression, returns the sequence of predicated values."
   [{:keys [options model] :as train-result} dataset]
-  (when-not (> (count (:feature-columns options)) 0)
-     (throw (ex-info "Must be at least one feature column to train"
-                     {:feature-columns (get options :feature-columns)})))
-  (let [ml-system (registry/system (:model-type options))]
-    (system-proto/predict ml-system options model dataset)))
+  (let [feature-columns (:feature-columns options)
+        _ (when-not (seq feature-columns)
+            (throw (ex-info "Feature columns are missing" {})))
+        ;;Order columns identical to training and remove anything else.
+        ;;The select implicitly checks that the columns exist.
+
+        dataset (-> (ds/select (ds/->dataset dataset)
+                               feature-columns :all)
+                    (ds/update-columns
+                     feature-columns
+                     #(ds-col/set-metadata % (assoc (ds-col/metadata %)
+                                                    :column-type
+                                                    :feature))))]
+    ;;If this isn't true you are in trouble
+    (assert (= (set feature-columns)
+               (set (cf/feature? dataset))))
+    (let [ml-system (registry/system (:model-type options))]
+      (system-proto/predict ml-system options model dataset))))
 
 
 (defn dataset-seq->dataset-model-seq
   "Given a sequence of {:train-ds ...} datasets, produce a sequence of:
   {:model ...}
   train-ds is removed to keep memory usage as low as possible.
-  See dataset/dataset->k-fold-datasets"
+  See ds/dataset->k-fold-datasets"
   [options dataset-seq]
   (->> dataset-seq
        (map (fn [{:keys [train-ds] :as dataset-entry}]
@@ -94,7 +130,7 @@
                     (let [{predictions :retval
                            predict-time :milliseconds}
                           (utils/time-section (predict train-result test-ds))
-                          labels (dataset/labels test-ds options)]
+                          labels (ds/labels test-ds)]
                       (merge (dissoc train-result :test-ds)
                              {:predict-time predict-time
                               :loss (loss-fn predictions labels)})))))
@@ -139,11 +175,19 @@ first try."
          k-fold 5}
     :as options}
    loss-fn dataset]
+  (when-not (->> (ds/columns dataset)
+                 (map dtype/get-datatype)
+                 (every? casting/numeric-type?))
+    (throw (ex-info "Currently no systems can handle non-numeric data."
+                    {:non-numeric-columns
+                     (->> (ds/columns dataset)
+                          (map ds-col/metadata)
+                          (filter #(= :string (:datatype %))))})))
   ;;Should do row-major conversion here and make it work later.  We specifically
   ;;know the feature and labels can't change.
   (let [dataset-seq (if (and k-fold (> (int k-fold) 1))
-                      (vec (dataset/->k-fold-datasets dataset k-fold options))
-                      [(dataset/->train-test-split dataset options)])]
+                      (vec (ds/->k-fold-datasets dataset k-fold options))
+                      [(ds/->train-test-split dataset options)])]
     (->> (ml-gs/gridsearch options)
          (take gridsearch-depth)
          (parallel/queued-pmap

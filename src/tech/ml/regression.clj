@@ -38,7 +38,7 @@
 (defn verify-model
   [trained-model test-ds loss-fn]
   (let [predictions (ml/predict trained-model test-ds)
-        labels (dataset/labels test-ds (:options trained-model))
+        labels (dataset/labels test-ds)
         loss-val (loss-fn predictions labels)
         residuals (m/sub labels predictions)]
         (merge

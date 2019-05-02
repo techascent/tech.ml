@@ -1,14 +1,15 @@
 (ns tech.libs.svm
   (:require [tech.ml.dataset :as dataset]
+            [tech.ml.dataset.options :as ds-options]
             [tech.ml.model :as model]
             [tech.ml.protocols.system :as ml-proto]
             [tech.ml.gridsearch :as ml-gs]
             [tech.ml.registry :as registry]
             [tech.ml.model :as model]
-            [tech.datatype :as dtype]
+            [tech.v2.datatype :as dtype]
             [clojure.string :as s]
             [tech.jna :as jna]
-            [tech.datatype.jna :as dtype-jna])
+            [tech.v2.datatype.jna :as dtype-jna])
   (:import [tech.libs.svm Types$SVMNode$ByReference Types$SVMProblem$ByReference
             Types$SVMParameter$ByReference
             Types$SVMModel$ByReference
@@ -145,7 +146,8 @@
   (let [num-items (count row-major-dataset)
         feature-ecount (dtype/ecount (:features (first row-major-dataset)))
         labels (when labels?
-                 (dtype-jna/make-typed-pointer
+                 (dtype/make-container
+                  :native-buffer
                   :float64
                   (map (comp #(dtype/get-value % 0)
                              :label) row-major-dataset)))
@@ -166,7 +168,8 @@
         array-datatype (case ptr-size
                          4 :int32
                          8 :int64)]
-    (dtype-jna/make-typed-pointer
+    (dtype/make-container
+     :native-buffer
      array-datatype
      (->> node-array-array
           (map (fn [^"[Ltech.libs.svm.Types$SVMNode$ByReference;" node-ary]
@@ -282,16 +285,16 @@
               retval))
           {:keys [nodes]} (dataset->svm-dataset row-major-dataset false)]
       (if (classification? (model/options->model-type options))
-        (let [label-map (dataset/options->label-map options)
+        (let [label-map (ds-options/inference-target-label-map options)
               pre-ordered-labels (->> label-map
                                       (sort-by second)
                                       (mapv first))
-              model-labels (-> (dtype-jna/->TypedPointer (.label model)
-                                                         (* (dtype/datatype->byte-size
-                                                             :int32)
-                                                            (.nr_class model))
-                                                         :int32)
-                               dtype/->vector)
+              model-labels (-> (dtype-jna/unsafe-address->typed-pointer
+                                (Pointer/nativeValue (.label model))
+                                (* (dtype/datatype->byte-size :int32)
+                                   (.nr_class model))
+                                :int32))
+              model-labels (dtype/->vector model-labels)
               ;;SVM reorders labels
               ordered-labels (mapv pre-ordered-labels model-labels)
               probabilities (double-array (.nr_class model))

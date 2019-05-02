@@ -3,12 +3,13 @@
             [tech.libs.smile.utils :as utils]
             [tech.libs.smile.kernels]
             [tech.libs.smile.distance]
-            [tech.datatype :as dtype]
+            [tech.v2.datatype :as dtype]
             [tech.ml.protocols.system :as ml-proto]
             [tech.ml.model :as model]
             [tech.ml.registry :as registry]
             [tech.ml.dataset :as dataset]
             [tech.ml.gridsearch :as ml-gs]
+            [tech.ml.dataset.options :as ds-options]
             [camel-snake-kebab.core :refer [->kebab-case]])
   (:import [smile.classification DecisionTree$SplitRule
             NaiveBayes$Model SVM$Multiclass OnlineClassifier SoftClassifier
@@ -379,7 +380,7 @@
   (predict [system options trained-model-bytes dataset]
     (let [row-major-dataset (dataset/->row-major dataset options)
           trained-model (model/byte-array->model trained-model-bytes)
-          inverse-label-map (dataset/options->label-inverse-map options)
+          inverse-label-map (ds-options/inference-target-label-inverse-map options)
           ordered-labels (->> inverse-label-map
                               (sort-by first)
                               (mapv second))]

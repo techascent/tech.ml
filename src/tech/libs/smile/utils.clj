@@ -1,6 +1,7 @@
 (ns tech.libs.smile.utils
-  (:require [tech.datatype :as dtype]
+  (:require [tech.v2.datatype :as dtype]
             [tech.ml.dataset :as dataset]
+            [tech.ml.dataset.options :as ds-options]
             [tech.ml.utils :as ml-utils])
 
   (:import [java.lang.reflect Constructor]
@@ -38,7 +39,8 @@
        set))
 
 
-(def keyword->class-types
+(defn keyword->class-types
+  []
   {:float64 Double/TYPE
    :int32 Integer/TYPE
    :boolean Boolean/TYPE
@@ -55,11 +57,11 @@
 
 (defmethod option->class-type :default
   [option]
-  (if-let [retval (keyword->class-types (:type option))]
+  (if-let [retval ((keyword->class-types) (:type option))]
     retval
     (throw (ex-info "Failed to find primitive class type"
                     {:cls-type (:type option)
-                     :available (keys keyword->class-types)}))))
+                     :available (keys (keyword->class-types))}))))
 
 
 (defmethod option->class-type :enumeration
@@ -255,9 +257,9 @@
 
 (defn options->num-classes
   ^long [options]
-  (dataset/options->num-classes options))
+  (ds-options/num-classes options))
 
 
 (defn options->feature-ecount
   ^long [options]
-  (dataset/options->feature-ecount options))
+  (ds-options/feature-ecount options))

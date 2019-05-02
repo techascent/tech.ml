@@ -2,14 +2,15 @@
   (:require [clojure.string :as s]
             [clojure.java.io :as io]
             [camel-snake-kebab.core :refer [->kebab-case]]
-            [tech.ml.dataset :as dataset]
+            [tech.ml.dataset :as ds]
             [tech.ml :as ml]
-            [tech.ml.dataset.etl :as etl]
+            [tech.ml.dataset.pipeline :as dsp]
+            [tech.ml.dataset.pipeline.column-filters :as cf]
             [tech.ml.loss :as loss]
             [clojure.test :refer :all]))
 
 
-(defn fruit-dataset
+(defn mapseq-dataset
   []
   (let [fruit-ds (slurp (io/resource "fruit_data_with_colors.txt"))
         dataset (->> (s/split fruit-ds #"\n")
@@ -28,27 +29,52 @@
                      (zipmap ds-keys)))))))
 
 
-(def fruit-pipeline '[[remove [:fruit-subtype :fruit-label]]
-                      [string->number string?]
-                      ;;Range numeric data to -1 1
-                      [range-scaler (not categorical?)]])
+(def fruit-dataset
+  (memoize
+   (fn []
+     (ds/->dataset (mapseq-dataset)))))
+
+
+(defn fruit-pipeline
+  [dataset training?]
+  (-> dataset
+      (ds/remove-columns [:fruit-subtype :fruit-label])
+      (dsp/range-scale #(cf/not cf/categorical?))
+      (dsp/pwhen
+       training?
+       #(dsp/without-recording
+         (-> %
+             (dsp/string->number :fruit-name)
+             (ds/set-inference-target :fruit-name))))))
 
 
 (defn classify-fruit
   [options]
   (let [options (assoc options :target :fruit-name)
-        {:keys [dataset pipeline options]}
-        (-> (fruit-dataset)
-            (etl/apply-pipeline fruit-pipeline options))
-        {:keys [train-ds test-ds]} (dataset/->train-test-split dataset {})
+        pipeline-data (dsp/pipeline-train-context
+                       (fruit-pipeline (fruit-dataset) true))
+        ds (:dataset pipeline-data)
+        {:keys [train-ds test-ds]} (ds/->train-test-split ds {})
         model (ml/train options train-ds)
         test-output (ml/predict model test-ds)
-        labels (dataset/labels test-ds options)]
+        labels (ds/labels test-ds)]
 
     ;;Accuracy gets *better* as it increases.  This is the opposite of a loss!!
     (is (> (loss/classification-accuracy test-output labels)
            (or (:classification-accuracy options)
-               0.7)))))
+               0.7)))
+    ;;Now here is the production pathway
+    (let [inference-src-ds (ds/remove-columns
+                            (fruit-dataset)
+                            [:fruit-name :fruit-subtype :fruit-label])
+          inference-ds (-> (dsp/pipeline-inference-context
+                            (:context pipeline-data)
+                            (fruit-pipeline inference-src-ds false))
+                           :dataset)
+          inference-output (ml/predict model inference-ds)]
+      (is (> (loss/classification-accuracy test-output labels)
+             (or (:classification-accuracy options)
+                 0.7))))))
 
 
 (defn auto-gridsearch-fruit
@@ -56,14 +82,12 @@
   (let [options (assoc options
                        :target :fruit-name
                        :k-fold 3)
-        {:keys [dataset pipeline options]}
-        (-> (fruit-dataset)
-            (etl/apply-pipeline fruit-pipeline options))
+        ds (fruit-pipeline (fruit-dataset) true)
         ;; Annotate options with gridsearch information.
         gs-options (ml/auto-gridsearch-options options)
         retval (ml/gridsearch (assoc gs-options :k-fold 3)
                               loss/classification-loss
-                              dataset)]
+                              ds)]
     (is (< (double (:average-loss (first retval)))
            (double (or (:classification-loss options)
                        0.2))))
