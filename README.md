@@ -20,7 +20,7 @@ automatic.
 5.  Infer.
 
 
-Checkout the [example pipeline](example/src/tech/ml/example/svm_datasets.clj) and [shotgun classification approach](exmaple/src/tech/ml/example/classify.clj).
+Checkout the [example pipeline](example/src/tech/ml/example/svm_datasets.clj) and [shotgun classification approach](example/src/tech/ml/example/classify.clj).
 
 
 ### ML Is Functional
