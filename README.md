@@ -149,7 +149,7 @@ user> (:options model)
 ;; categorical value.  The underlying columnstore table system only supports strings so
 ;; our results are in strings and not keywords.
 ;; The key takeaway though is that the label mapping is stored with the model so you
-;; cannot possibly get into a situation where
+;; cannot possibly get into a situation where your labels do not match your model.
 
 user> (take 10 (ml/predict model processed-ds))
 ({"apple" 0.98378086,
