@@ -49,6 +49,11 @@ user> (require '[tech.ml.loss :as loss])
 nil
 user> (require '[tech.ml.dataset.pipeline :as dsp])
 nil
+user> (require '[tech.ml.dataset.pipeline.pipeline-operators
+                 :refer [without-recording
+                         pipeline-train-context
+                         pipeline-inference-context]])
+nil
 user> (require '[tech.ml.dataset :as ds])
 nil
 user> (first (classify-verify/mapseq-dataset))
@@ -223,7 +228,7 @@ user> (defn fruit-pipeline
       (dsp/range-scale #(cf/not cf/categorical?))
       (dsp/pwhen
        training?
-       #(dsp/without-recording
+       #(without-recording
          (-> %
              (dsp/string->number :fruit-name)
              (ds/set-inference-target :fruit-name))))))
@@ -235,8 +240,8 @@ user> (defn fruit-pipeline
 ;; a training dataset to train a model and some context that will
 ;; be used during inference.
 
-(def dataset-train-data (dsp/pipeline-train-context
-                               (fruit-pipeline fruits true)))
+(def dataset-train-data (pipeline-train-context
+                           (fruit-pipeline fruits true)))
 #'user/dataset-train-data
 user> (keys dataset-train-data)
 (:context :dataset)
@@ -290,7 +295,7 @@ _unnamed [10 4]:
 
 nil
 
-user> (def inference-data (dsp/pipeline-inference-context
+user> (def inference-data (pipeline-inference-context
                            (:context dataset-train-data)
                            (fruit-pipeline inference-src-ds false)))
 #'user/inference-data
