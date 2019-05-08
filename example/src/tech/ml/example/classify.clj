@@ -4,9 +4,9 @@
             [tech.ml.dataset :as ml-dataset]
             [tech.ml.loss :as loss]
             [tech.libs.xgboost]
+            [tech.v2.datatype :as dtype]
             [tech.libs.smile.classification]
             [tech.libs.svm]
-            [clojure.core.matrix :as m]
             [taoensso.nippy :as nippy]
             [tech.io :as io]))
 
@@ -27,17 +27,23 @@
                                   (ml-dataset/ds-concat train-ds test-ds)
                                   train-ds)]
                    (->> base-systems
-                        (mapcat (fn [opts]
-                                  (let [gs-options (ml/auto-gridsearch-options opts)]
-                                    (println (format "Dataset: %s, Model: %s" name (:model-type opts)))
-                                    (->> (ml/gridsearch (merge options gs-options
-                                                               {:k-fold (if (> (first (m/shape train-ds)) 200)
-                                                                          5
-                                                                          3)
-                                                                :gridsearch-depth 75})
-                                                        loss/classification-loss
-                                                        train-ds)
-                                         (map (partial merge (dissoc base-dataset :test-ds :train-ds :options)))))))
+                        (mapcat
+                         (fn [opts]
+                           (let [gs-options (ml/auto-gridsearch-options opts)]
+                             (println (format "Dataset: %s, Model: %s"
+                                              name (:model-type opts)))
+                             (->> (ml/gridsearch
+                                   (merge options gs-options
+                                          {:k-fold (if (> (first (dtype/shape train-ds))
+                                                          200)
+                                                     5
+                                                     3)
+                                           :gridsearch-depth 75})
+                                   loss/classification-loss
+                                   train-ds)
+                                  (map (partial merge (dissoc base-dataset
+                                                              :test-ds :train-ds
+                                                              :options)))))))
                         (sort-by :average-loss)
                         (take 15)))})))))
 

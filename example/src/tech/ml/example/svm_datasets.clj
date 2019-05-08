@@ -5,6 +5,10 @@
             [tech.ml.dataset.svm :as svm]
             [tech.ml.dataset :as ds]
             [tech.ml.dataset.pipeline :as dsp]
+            [tech.ml.dataset.pipeline.pipeline-operators
+             :refer [without-recording
+                     pipeline-train-context
+                     pipeline-inference-context]]
             [tech.ml.dataset.column :as ds-col]
             [tech.v2.datatype :as dtype]))
 
@@ -36,11 +40,11 @@
   (time
    (let [{train-ds :dataset
           train-context :context}
-         (dsp/pipeline-train-context
+         (pipeline-train-context
           (-> (svm/parse-svm-file train-fname :label-map label-map)
               svm-pipeline))
          {test-ds :dataset} (when test-fname
-                              (dsp/pipeline-inference-context
+                              (pipeline-inference-context
                                train-context
                                (-> (svm/parse-svm-file test-fname :label-map label-map)
                                    svm-pipeline)))]
