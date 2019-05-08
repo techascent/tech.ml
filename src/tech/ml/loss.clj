@@ -1,17 +1,23 @@
 (ns tech.ml.loss
-  (:require [clojure.core.matrix :as m]))
+  (:require [tech.v2.datatype.functional :as dfn]))
 
+(def crap-atom (atom {}))
 
 (defn mse
   "mean squared error"
   ^double [predictions labels]
   (assert (= (count predictions) (count labels)))
-  (let [n (count predictions)]
-    (double
-     (/ (-> (m/sub predictions labels)
-            (m/pow 2)
-            (m/esum))
-        n))))
+  (try
+    (let [n (count predictions)]
+      (double
+       (/ (double (-> (dfn/- predictions labels)
+                      (dfn/pow 2)
+                      (dfn/+)))
+          n)))
+    (catch Throwable e
+      (swap! crap-atom merge {:pred predictions
+                              :labels labels})
+      (throw e))))
 
 
 (defn rmse

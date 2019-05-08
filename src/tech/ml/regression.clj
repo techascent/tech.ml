@@ -2,37 +2,40 @@
   "Utilities for training/verifying regression models"
   (:require [tech.ml :as ml]
             [tech.ml.loss :as loss]
+            [tech.ml.model]
             [tech.ml.dataset :as dataset]
-            [clojure.core.matrix :as m]))
+            [tech.v2.datatype.functional :as dfn]))
 
 
-(defonce libsvm-regression-models
-  (try
-    (require '[tech.libs.svm])
-    [:libsvm/regression]
-    (catch Throwable e
-      [])))
+(def libsvm-regression-models
+  (future (try
+            (require '[tech.libs.svm])
+            [:libsvm/regression]
+            (catch Throwable e
+              (println e)
+              []))))
 
 
-(defonce smile-regression-models
-  (try
-    (require '[tech.libs.smile.regression])
-    [:smile.regression/ridge
-     :smile.regression/lasso]
-    (catch Throwable e [])))
+(def smile-regression-models
+  (future (try
+            (require '[tech.libs.smile.regression])
+            [:smile.regression/ridge
+             :smile.regression/lasso]
+            (catch Throwable e []))))
 
 
-(defonce xgboost-regression-models
-  (try
-    (require '[tech.libs.xgboost])
-    [:xgboost/regression]
-    (catch Throwable e [])))
+(def xgboost-regression-models
+  (future (try
+            (require '[tech.libs.xgboost])
+            [:xgboost/regression]
+            (catch Throwable e []))))
 
 
-(def default-gridsearch-models
-  (->> (concat libsvm-regression-models
-               smile-regression-models
-               xgboost-regression-models)))
+(defn default-gridsearch-models
+  []
+  (->> (concat @libsvm-regression-models
+               @smile-regression-models
+               @xgboost-regression-models)))
 
 
 (defn verify-model
@@ -40,7 +43,7 @@
   (let [predictions (ml/predict trained-model test-ds)
         labels (dataset/labels test-ds)
         loss-val (loss-fn predictions labels)
-        residuals (m/sub labels predictions)]
+        residuals (dfn/- labels predictions)]
         (merge
      {:loss loss-val
       :residuals (vec residuals)
@@ -64,10 +67,12 @@
               gridsearch-regression-systems
               dataset-name
               loss-fn]
-      :or {gridsearch-regression-systems default-gridsearch-models
+      :or {
            loss-fn loss/rmse
            dataset-name (dataset/dataset-name dataset)}}]
-  (let [train-test-split (dataset/->train-test-split dataset options)
+  (let [gridsearch-regression-systems (or gridsearch-regression-systems
+                                          (default-gridsearch-models))
+        train-test-split (dataset/->train-test-split dataset options)
         trained-results
         (concat (->> regression-systems
                      (map ->option-map)

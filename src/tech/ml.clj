@@ -158,7 +158,7 @@
 ;;The gridsearch error reporter is called when there is an error during gridsearch.
 ;;It is called like so:
 ;;(*gridsearch-error-reporter options-map error)
-(def ^:dynamic *gridsearch-error-reporter* nil)
+(def ^:dynamic *gridsearch-error-reporter* println)
 
 
 (defn gridsearch
