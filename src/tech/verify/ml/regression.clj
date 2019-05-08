@@ -3,6 +3,10 @@
             [tech.ml.loss :as loss]
             [tech.ml.dataset :as dataset]
             [tech.ml.dataset.pipeline :as dsp]
+            [tech.ml.dataset.pipeline.pipeline-operators
+             :refer [without-recording
+                     pipeline-train-context
+                     pipeline-inference-context]]
             [clojure.test :refer :all]))
 
 
@@ -25,9 +29,9 @@
                            (take 1000))
         test-dataset (for [x (range -9.9 10 0.1)] {:x x :y (f x)})
         {train-dataset :dataset
-         train-context :context} (dsp/pipeline-train-context
+         train-context :context} (pipeline-train-context
                                   (mini-pipeline train-dataset))
-        {test-dataset :dataset} (dsp/pipeline-inference-context
+        {test-dataset :dataset} (pipeline-inference-context
                                  train-context
                                  (mini-pipeline test-dataset))]
     {:train-ds train-dataset

@@ -5,6 +5,10 @@
             [tech.ml.dataset :as ds]
             [tech.ml :as ml]
             [tech.ml.dataset.pipeline :as dsp]
+            [tech.ml.dataset.pipeline.pipeline-operators
+             :refer [without-recording
+                     pipeline-train-context
+                     pipeline-inference-context]]
             [tech.ml.dataset.pipeline.column-filters :as cf]
             [tech.ml.loss :as loss]
             [clojure.test :refer :all]))
@@ -42,7 +46,7 @@
       (dsp/range-scale #(cf/not cf/categorical?))
       (dsp/pwhen
        training?
-       #(dsp/without-recording
+       #(without-recording
          (-> %
              (dsp/string->number :fruit-name)
              (ds/set-inference-target :fruit-name))))))
@@ -51,7 +55,7 @@
 (defn classify-fruit
   [options]
   (let [options (assoc options :target :fruit-name)
-        pipeline-data (dsp/pipeline-train-context
+        pipeline-data (pipeline-train-context
                        (fruit-pipeline (fruit-dataset) true))
         ds (:dataset pipeline-data)
         {:keys [train-ds test-ds]} (ds/->train-test-split ds {})
@@ -67,7 +71,7 @@
     (let [inference-src-ds (ds/remove-columns
                             (fruit-dataset)
                             [:fruit-name :fruit-subtype :fruit-label])
-          inference-ds (-> (dsp/pipeline-inference-context
+          inference-ds (-> (pipeline-inference-context
                             (:context pipeline-data)
                             (fruit-pipeline inference-src-ds false))
                            :dataset)
