@@ -4,31 +4,36 @@
             [tech.ml.loss :as loss]
             [tech.ml.model]
             [tech.ml.dataset :as dataset]
-            [tech.v2.datatype.functional :as dfn]))
+            [tech.v2.datatype.functional :as dfn]
+            [clojure.tools.logging :as log]))
 
 
 (def libsvm-regression-models
-  (future (try
-            (require '[tech.libs.svm])
-            [:libsvm/regression]
-            (catch Throwable e
-              (println e)
-              []))))
+  (delay (try
+           (require '[tech.libs.svm])
+           [:libsvm/regression]
+           (catch Throwable e
+             (log/warnf "Unable to load libsvm: %s" e)
+             []))))
 
 
 (def smile-regression-models
-  (future (try
-            (require '[tech.libs.smile.regression])
-            [:smile.regression/ridge
-             :smile.regression/lasso]
-            (catch Throwable e []))))
+  (delay (try
+           (require '[tech.libs.smile.regression])
+           [:smile.regression/ridge
+            :smile.regression/lasso]
+           (catch Throwable e
+             (log/warnf "Unable to load smile: %s" e)
+             []))))
 
 
 (def xgboost-regression-models
   (future (try
             (require '[tech.libs.xgboost])
             [:xgboost/regression]
-            (catch Throwable e []))))
+            (catch Throwable e
+              (log/warnf "Unable to load xgboost: %s" e)
+              []))))
 
 
 (defn default-gridsearch-models
@@ -77,16 +82,16 @@
         (concat (->> regression-systems
                      (map ->option-map)
                      (mapv (fn [model-options]
-                             (println (format "Training dataset %s model %s"
-                                              dataset-name (:model-type model-options)))
+                             (log/infof "Training dataset %s model %s"
+                                        dataset-name (:model-type model-options))
                              (let [best-model (ml/train (merge options model-options)
                                                         (:train-ds train-test-split))]
                                (verify-model best-model (:test-ds train-test-split) loss-fn)))))
                 (->> gridsearch-regression-systems
                      (map ->option-map)
                      (mapv (fn [model-options]
-                             (println (format "Gridsearching dataset %s model %s"
-                                              dataset-name (:model-type model-options)))
+                             (log/infof "Gridsearching dataset %s model %s"
+                                        dataset-name (:model-type model-options))
                              (let [best-model (-> (ml/gridsearch (merge options
                                                                         model-options)
                                                                  loss-fn (:train-ds train-test-split))
