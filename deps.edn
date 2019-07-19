@@ -1,5 +1,5 @@
 {:paths ["src"]
  :deps {org.clojure/clojure              {:mvn/version "1.10.1"}
-        techascent/tech.ml.dataset       {:mvn/version "1.0-beta2"}
-        techascent/tech.io               {:mvn/version "3.2"}
+        techascent/tech.ml.dataset       {:mvn/version "1.0"}
+        techascent/tech.io               {:mvn/version "3.3"}
         ml.dmlc/xgboost4j                {:mvn/version "0.81"}}}
