@@ -15,7 +15,7 @@
 
 (deftest basic-classification
   (verify-classification/classify-fruit {:model-type :libsvm/classification
-                                         :classification-accuracy 0.1}))
+                                         :classification-accuracy 0.01}))
 
 
 (deftest basic-classification-gridsearch
