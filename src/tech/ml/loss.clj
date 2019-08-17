@@ -12,7 +12,7 @@
       (double
        (/ (double (-> (dfn/- predictions labels)
                       (dfn/pow 2)
-                      (dfn/+)))
+                      (dfn/reduce-+)))
           n)))
     (catch Throwable e
       (swap! crap-atom merge {:pred predictions

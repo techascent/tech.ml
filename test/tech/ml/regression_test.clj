@@ -3,8 +3,7 @@
             [tech.ml.dataset :as ds]
             [tech.ml.visualization.vega :as vega-viz]
             [tech.verify.ml.regression :as verify-reg]
-            [clojure.test :refer :all]
-            [oz.core :as oz]))
+            [clojure.test :refer :all]))
 
 
 (deftest shotgun-approach-sanity
