@@ -28,6 +28,7 @@
 
 (def objective-types
   {:linear-regression "reg:linear"
+   :squared-error-regression "reg:squarederror"
    :logistic-regression "reg:logistic"
    ;;logistic regression for binary classification
    :logistic-binary-classification "binary:logistic"
@@ -90,7 +91,7 @@
 
 (defmethod model-type->xgboost-objective :regression
   [_]
-  (model-type->xgboost-objective :linear-regression))
+  (model-type->xgboost-objective :squared-error-regression))
 
 
 (defmethod model-type->xgboost-objective :binary-classification
