@@ -8,8 +8,10 @@
             [tech.parallel :as parallel]
             [tech.v2.datatype :as dtype]
             [tech.v2.datatype.casting :as casting]
-            [clojure.set :as c-set]
-            [tech.ml.utils :as utils])
+            [tech.v2.datatype.functional :as dfn]
+            [tech.ml.utils :as utils]
+            [clojure.tools.logging :as log]
+            [clojure.set :as c-set])
   (:import [java.util UUID]))
 
 
@@ -194,9 +196,17 @@ first try."
           parallelism
           (fn [options-map]
             (try
-              (average-prediction-error options-map
-                                        loss-fn
-                                        dataset-seq)
+              (let [retval
+                    (average-prediction-error options-map
+                                              loss-fn
+                                              dataset-seq)]
+                (if (dfn/valid? (:average-loss retval))
+                  retval
+                  (do
+                    (log/warnf "Model produced nan or inf loss: %s"
+                               (with-out-str
+                                 (clojure.pprint/pprint retval)))
+                    nil)))
               (catch Throwable e
                 (when *gridsearch-error-reporter*
                   (*gridsearch-error-reporter* options-map e))

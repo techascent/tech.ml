@@ -1,23 +1,16 @@
 (ns tech.ml.loss
   (:require [tech.v2.datatype.functional :as dfn]))
 
-(def crap-atom (atom {}))
-
 (defn mse
   "mean squared error"
   ^double [predictions labels]
   (assert (= (count predictions) (count labels)))
-  (try
-    (let [n (count predictions)]
-      (double
-       (/ (double (-> (dfn/- predictions labels)
-                      (dfn/pow 2)
-                      (dfn/reduce-+)))
-          n)))
-    (catch Throwable e
-      (swap! crap-atom merge {:pred predictions
-                              :labels labels})
-      (throw e))))
+  (let [n (count predictions)]
+    (double
+     (/ (double (-> (dfn/- predictions labels)
+                    (dfn/pow 2)
+                    (dfn/reduce-+)))
+        n))))
 
 
 (defn rmse
@@ -25,6 +18,18 @@
   ^double [predictions labels]
   (-> (mse predictions labels)
       (Math/sqrt)))
+
+
+(defn mae
+  "mean absolute error"
+  ^double [predictions labels]
+  (assert (= (count predictions) (count labels)))
+  (let [n (count predictions)]
+    (double
+     (/ (double (-> (dfn/- predictions labels)
+                    dfn/abs
+                    (dfn/reduce-+)))
+        n))))
 
 
 (defn classification-accuracy
