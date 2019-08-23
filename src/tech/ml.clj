@@ -11,7 +11,8 @@
             [tech.v2.datatype.functional :as dfn]
             [tech.ml.utils :as utils]
             [clojure.tools.logging :as log]
-            [clojure.set :as c-set])
+            [clojure.set :as c-set]
+            [clojure.pprint :as pp])
   (:import [java.util UUID]))
 
 
@@ -205,7 +206,7 @@ first try."
                   (do
                     (log/warnf "Model produced nan or inf loss: %s"
                                (with-out-str
-                                 (clojure.pprint/pprint retval)))
+                                 (pp/pprint retval)))
                     nil)))
               (catch Throwable e
                 (when *gridsearch-error-reporter*

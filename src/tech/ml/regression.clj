@@ -63,6 +63,51 @@
     {:model-type model-options}
     model-options))
 
+(defn train-systems
+  "Train but do not gridsearch this set of regressors.  Used for situations
+  where the regressor cannot be safely gridsearched."
+  [options loss-fn train-ds test-ds regression-systems]
+  (->> regression-systems
+       (map ->option-map)
+       (mapv (fn [model-options]
+               (log/infof "Training dataset %s model %s"
+                          (dataset/dataset-name train-ds)
+                          (:model-type model-options))
+               (let [best-model (ml/train (merge options model-options) train-ds)]
+                 (verify-model best-model test-ds
+                               loss-fn))))))
+
+
+(defn gridsearch-systems
+  "Gridsearch this set of regressors.  Used for situations
+  where the regressor cannot be safely gridsearched."
+  [options loss-fn train-ds test-ds regression-systems]
+  (->> regression-systems
+       (map ->option-map)
+       (map (fn [model-options]
+              (log/infof "Gridsearching dataset %s model %s"
+                         (dataset/dataset-name train-ds) (:model-type model-options))
+              (let [top-n-models
+                    (-> (merge options model-options)
+                        (ml/auto-gridsearch-options)
+                        (ml/gridsearch loss-fn train-ds))
+                    best-model (first top-n-models)]
+                (assoc
+                 (verify-model best-model test-ds loss-fn)
+                 :top-n-models (->> top-n-models
+                                    (mapv #(-> (select-keys
+                                                %
+                                                [:average-loss :options])
+                                               (update :options
+                                                       (fn [options]
+                                                         (dissoc
+                                                          options
+                                                          :column-map
+                                                          :feature-columns
+                                                          :label-columns
+                                                          :label-map
+                                                          :dataset-shape))))))))))))
+
 
 (defn train-regressors
   "Train a range of regressors across a dataset producing
@@ -70,35 +115,14 @@
   [dataset options
    & {:keys  [regression-systems
               gridsearch-regression-systems
-              dataset-name
               loss-fn]
-      :or {
-           loss-fn loss/rmse
-           dataset-name (dataset/dataset-name dataset)}}]
-  (let [gridsearch-regression-systems (or gridsearch-regression-systems
+      :or {loss-fn loss/rmse}}]
+  (let [dataset-name (dataset/dataset-name dataset)
+        gridsearch-regression-systems (or gridsearch-regression-systems
                                           (default-gridsearch-models))
-        train-test-split (dataset/->train-test-split dataset options)
-        trained-results
-        (concat
-         (->> regression-systems
-              (map ->option-map)
-              (mapv (fn [model-options]
-                      (log/infof "Training dataset %s model %s"
-                                 dataset-name (:model-type model-options))
-                      (let [best-model (ml/train (merge options model-options)
-                                                 (:train-ds train-test-split))]
-                        (verify-model best-model (:test-ds train-test-split)
-                                      loss-fn)))))
-         (->> gridsearch-regression-systems
-              (map ->option-map)
-              (mapv (fn [model-options]
-                      (log/infof "Gridsearching dataset %s model %s"
-                                 dataset-name (:model-type model-options))
-                      (let [best-model (-> (merge options model-options)
-                                           (ml/auto-gridsearch-options)
-                                           (ml/gridsearch
-                                            loss-fn (:train-ds train-test-split))
-                                           first)]
-                        (verify-model best-model (:test-ds train-test-split)
-                                      loss-fn))))))]
-    (vec trained-results)))
+        {:keys [train-ds test-ds]} (dataset/->train-test-split dataset options)]
+    (->> (concat (train-systems options loss-fn
+                                train-ds test-ds regression-systems)
+                 (gridsearch-systems options loss-fn
+                                     train-ds test-ds gridsearch-regression-systems))
+         (sort-by :average-loss))))
