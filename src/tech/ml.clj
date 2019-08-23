@@ -151,8 +151,8 @@
 (defn auto-gridsearch-options
   [options]
   (let [ml-system (registry/system (:model-type options))]
-    (merge options
-           (system-proto/gridsearch-options ml-system options))))
+    (merge (system-proto/gridsearch-options ml-system options)
+           options)))
 
 
 ;;The gridsearch error reporter is called when there is an error during gridsearch.

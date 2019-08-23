@@ -79,22 +79,26 @@
                                           (default-gridsearch-models))
         train-test-split (dataset/->train-test-split dataset options)
         trained-results
-        (concat (->> regression-systems
-                     (map ->option-map)
-                     (mapv (fn [model-options]
-                             (log/infof "Training dataset %s model %s"
-                                        dataset-name (:model-type model-options))
-                             (let [best-model (ml/train (merge options model-options)
-                                                        (:train-ds train-test-split))]
-                               (verify-model best-model (:test-ds train-test-split) loss-fn)))))
-                (->> gridsearch-regression-systems
-                     (map ->option-map)
-                     (mapv (fn [model-options]
-                             (log/infof "Gridsearching dataset %s model %s"
-                                        dataset-name (:model-type model-options))
-                             (let [best-model (-> (ml/gridsearch (merge options
-                                                                        model-options)
-                                                                 loss-fn (:train-ds train-test-split))
-                                                  first)]
-                               (verify-model best-model (:test-ds train-test-split) loss-fn))))))]
+        (concat
+         (->> regression-systems
+              (map ->option-map)
+              (mapv (fn [model-options]
+                      (log/infof "Training dataset %s model %s"
+                                 dataset-name (:model-type model-options))
+                      (let [best-model (ml/train (merge options model-options)
+                                                 (:train-ds train-test-split))]
+                        (verify-model best-model (:test-ds train-test-split)
+                                      loss-fn)))))
+         (->> gridsearch-regression-systems
+              (map ->option-map)
+              (mapv (fn [model-options]
+                      (log/infof "Gridsearching dataset %s model %s"
+                                 dataset-name (:model-type model-options))
+                      (let [best-model (-> (merge options model-options)
+                                           (ml/auto-gridsearch-options)
+                                           (ml/gridsearch
+                                            loss-fn (:train-ds train-test-split))
+                                           first)]
+                        (verify-model best-model (:test-ds train-test-split)
+                                      loss-fn))))))]
     (vec trained-results)))

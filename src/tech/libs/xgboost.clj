@@ -175,10 +175,10 @@
     {:subsample (ml-gs/linear [0.1 1.0])
      :scale-pos-weight (ml-gs/linear [0.1 2.0])
      :max-depth (comp long (ml-gs/linear-long [2 500]))
-     :lambda (ml-gs/linear [0 5])
-     :gamma (ml-gs/exp [0.0001 5])
+     :lambda (ml-gs/linear [0.01 2])
+     :gamma (ml-gs/exp [0.001 100])
      :eta (ml-gs/linear [0 1])
-     :alpha (ml-gs/exp [0.0001 5])})
+     :alpha (ml-gs/exp [0.01 2])})
   (train [_ options dataset]
     (let [objective (get-objective options)
           train-dmat (dataset->dmatrix dataset options)
@@ -191,14 +191,17 @@
           params (->> (-> (dissoc options :model-type :watches)
                           (assoc :objective objective))
                       ;;Adding in some defaults
-                      (merge  {:alpha 0.0
-                               :eta 0.3
-                               :lambda 0.0
-                               :max-depth 6
-                               :scale-pos-weight 1.0
-                               :subsample 0.87
-                               :silent 1
-                               } options
+                      (merge {}
+                             {
+                              :alpha 0.0
+                              :eta 0.3
+                              :lambda 1.0
+                              :max-depth 6
+                              :scale-pos-weight 1.0
+                              :subsample 0.87
+                              :silent 1
+                              }
+                             options
                               (when label-map
                                 {:num-class (count label-map)}))
                       (map (fn [[k v]]
