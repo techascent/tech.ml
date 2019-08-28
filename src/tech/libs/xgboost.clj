@@ -180,47 +180,51 @@
      :eta (ml-gs/linear [0 1])
      :alpha (ml-gs/exp [0.01 2])})
   (train [_ options dataset]
-    (let [objective (get-objective options)
-          train-dmat (dataset->dmatrix dataset options)
-          watches (:watches options)
-          round (or (:round options) 25)
-          early-stopping-round (when (:early-stopping-round options)
-                                 (int (:early-stopping-round options)))
-          label-map (when (multiclass-objective? objective)
-                      (dataset/inference-target-label-map dataset))
-          params (->> (-> (dissoc options :model-type :watches)
-                          (assoc :objective objective))
-                      ;;Adding in some defaults
-                      (merge {}
-                             {
-                              :alpha 0.0
-                              :eta 0.3
-                              :lambda 1.0
-                              :max-depth 6
-                              :scale-pos-weight 1.0
-                              :subsample 0.87
-                              :silent 1
-                              }
-                             options
-                              (when label-map
-                                {:num-class (count label-map)}))
-                      (map (fn [[k v]]
-                             (when v
-                               [(s/replace (name k) "-" "_" ) v])))
-                      (remove nil?)
-                      (into {}))
-          metrics-data (float-array round)
-          ^Booster model (if early-stopping-round
-                           (XGBoost/train train-dmat params
-                                          (long round)
-                                          (or watches {}) nil nil nil
-                                          (int early-stopping-round))
-                           (XGBoost/train train-dmat params
-                                          (long round)
-                                          (or watches {}) nil nil))
-          out-s (ByteArrayOutputStream.)]
-      (.saveModel model out-s)
-      (.toByteArray out-s)))
+    ;;XGBOOST is fully reentrant but it doesn't benefit from further explicit
+    ;;parallelization.  Because of this, allowing xgboost to be 'pmapped'
+    ;;results a lot of times in a heavily oversubscribed machine.
+    (locking _
+      (let [objective (get-objective options)
+            train-dmat (dataset->dmatrix dataset options)
+            watches (:watches options)
+            round (or (:round options) 25)
+            early-stopping-round (when (:early-stopping-round options)
+                                   (int (:early-stopping-round options)))
+            label-map (when (multiclass-objective? objective)
+                        (dataset/inference-target-label-map dataset))
+            params (->> (-> (dissoc options :model-type :watches)
+                            (assoc :objective objective))
+                        ;;Adding in some defaults
+                        (merge {}
+                               {
+                                :alpha 0.0
+                                :eta 0.3
+                                :lambda 1.0
+                                :max-depth 6
+                                :scale-pos-weight 1.0
+                                :subsample 0.87
+                                :silent 1
+                                }
+                               options
+                               (when label-map
+                                 {:num-class (count label-map)}))
+                        (map (fn [[k v]]
+                               (when v
+                                 [(s/replace (name k) "-" "_" ) v])))
+                        (remove nil?)
+                        (into {}))
+            metrics-data (float-array round)
+            ^Booster model (if early-stopping-round
+                             (XGBoost/train train-dmat params
+                                            (long round)
+                                            (or watches {}) nil nil nil
+                                            (int early-stopping-round))
+                             (XGBoost/train train-dmat params
+                                            (long round)
+                                            (or watches {}) nil nil))
+            out-s (ByteArrayOutputStream.)]
+        (.saveModel model out-s)
+        (.toByteArray out-s))))
 
   (predict [_ options model dataset]
     (let [model (XGBoost/loadModel (ByteArrayInputStream. model))
