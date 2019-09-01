@@ -76,6 +76,28 @@
           dataset)))
 
 
+(defn thaw-model
+  "As an optimization, you can thaw a model and hold onto it.  This removes the model
+  byte array and adds a thawed model to the model-map.  For a relatively simple xgboost
+  model (~200K), thawing alone took about 177ms the first time a model was thawed but
+  only 2,3ms subsequently.  The intended use case is when you know you will infer
+  repeatedly given the same model.  Unlike the result of train, theresult of thaw-model
+  can can no longer be serialized.
+  This can also be used to get into model-specific operations that cannot be done
+  via the base ml protocols.
+  Returns a new map with :model removed and :thawed-model added."
+  [train-result]
+  (-> train-result
+      (update :thawed-model
+              (fn [item]
+                (or item (let [ml-system (registry/system
+                                          (get-in train-result
+                                                  [:options :model-type]))]
+                           (system-proto/thaw-model ml-system
+                                                    (:model train-result))))))
+      (dissoc :model)))
+
+
 (defn predict
   "Generate a sequence of predictions (inferences) from a training result.
 
@@ -101,7 +123,7 @@
     (assert (= (set feature-columns)
                (set (cf/feature? dataset))))
     (let [ml-system (registry/system (:model-type options))
-          thawed-model (or thawed-model (system-proto/thaw-model ml-system model))]
+          thawed-model (thaw-model train-result)]
       (system-proto/predict ml-system options thawed-model dataset))))
 
 
