@@ -123,7 +123,8 @@
     (assert (= (set feature-columns)
                (set (cf/feature? dataset))))
     (let [ml-system (registry/system (:model-type options))
-          thawed-model (thaw-model train-result)]
+          thawed-model (-> (thaw-model train-result)
+                           :thawed-model)]
       (system-proto/predict ml-system options thawed-model dataset))))
 
 
