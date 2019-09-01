@@ -1,5 +1,6 @@
 (ns tech.libs.xgboost
   (:require [tech.v2.datatype :as dtype]
+            [tech.v2.tensor :as dtt]
             [tech.parallel :as parallel]
             [tech.ml.model :as model]
             [tech.ml.protocols.system :as ml-proto]
@@ -9,12 +10,12 @@
             [tech.ml.gridsearch :as ml-gs]
             [clojure.string :as s]
             [tech.ml.dataset :as dataset]
-            [tech.ml.dataset.options :as ds-options])
+            [tech.ml.dataset.options :as ds-options]
+            [clojure.tools.logging :as log])
   (:refer-clojure :exclude [load])
   (:import [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
            [ml.dmlc.xgboost4j LabeledPoint]
-           [java.util Iterator]
-           [java.util UUID]
+           [java.util Iterator UUID LinkedHashMap Map]
            [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
 
@@ -166,6 +167,14 @@
       (= objective "multi:softprob")))
 
 
+(defn- safe-name
+  [item]
+  (if (or (keyword? item)
+          (symbol? item))
+    (name item)
+    (str item)))
+
+
 (defrecord XGBoostSystem []
   ml-proto/PMLSystem
   (system-name [_] :xgboost)
@@ -186,10 +195,29 @@
     (locking _
       (let [objective (get-objective options)
             train-dmat (dataset->dmatrix dataset options)
-            watches (:watches options)
+            base-watches (or (:watches options) {})
+            watches (->> base-watches
+                         (reduce (fn [^Map watches [k v]]
+                                   (.put watches (safe-name k)
+                                         (dataset->dmatrix v options))
+                                   watches)
+                                 ;;Linked hash map to preserve order
+                                 (LinkedHashMap.)))
             round (or (:round options) 25)
-            early-stopping-round (when (:early-stopping-round options)
-                                   (int (:early-stopping-round options)))
+            early-stopping-round (or (when (:early-stopping-round options)
+                                       (int (:early-stopping-round options)))
+                                     0)
+            _ (when (and (> (count watches) 1)
+                         (not (instance? LinkedHashMap (:watches options)))
+                         (not= 0 early-stopping-round))
+                (log/warn "Early stopping indicated but watches has undefined iteration order.
+Early stopping will always use the 'last' of the watches as defined by the iteration
+order of the watches map.  Consider using a java.util.LinkedHashMap for watches.
+https://github.com/dmlc/xgboost/blob/master/jvm-packages/xgboost4j/src/main/java/ml/dmlc/xgboost4j/java/XGBoost.java#L208"))
+            watch-names (->> base-watches
+                             (map-indexed (fn [idx [k v]]
+                                            [idx k]))
+                             (into {}))
             label-map (when (multiclass-objective? objective)
                         (dataset/inference-target-label-map dataset))
             params (->> (-> (dissoc options :model-type :watches)
@@ -213,21 +241,31 @@
                                  [(s/replace (name k) "-" "_" ) v])))
                         (remove nil?)
                         (into {}))
-            metrics-data (float-array round)
-            ^Booster model (if early-stopping-round
-                             (XGBoost/train train-dmat params
-                                            (long round)
-                                            (or watches {}) nil nil nil
-                                            (int early-stopping-round))
-                             (XGBoost/train train-dmat params
-                                            (long round)
-                                            (or watches {}) nil nil))
+            ^"[[F" metrics-data (when-not (empty? watches)
+                                  (->> (repeatedly (count watches)
+                                                   #(float-array round))
+                                       (into-array)))
+            ^Booster model (XGBoost/train train-dmat params
+                                          (long round)
+                                          (or watches {}) metrics-data nil nil
+                                          (int early-stopping-round))
             out-s (ByteArrayOutputStream.)]
         (.saveModel model out-s)
-        (.toByteArray out-s))))
+        {:model-data (.toByteArray out-s)
+         :metrics
+         (->> watches
+              (map-indexed vector)
+              (map (fn [[watch-idx [watch-name watch-data]]]
+                     [(get watch-names watch-idx)
+                      (aget metrics-data watch-idx)]))
+              (into {}))})))
 
   (thaw-model [_ model]
-    (XGBoost/loadModel (ByteArrayInputStream. model)))
+    (-> (if (map? model)
+          (:model-data model)
+          model)
+        (ByteArrayInputStream.)
+        (XGBoost/loadModel)))
 
   (predict [_ options thawed-model dataset]
     (let [retval (->> (dataset->dmatrix dataset (dissoc options :label-columns))

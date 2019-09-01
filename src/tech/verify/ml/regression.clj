@@ -57,7 +57,7 @@
          test-dataset :test-ds} (datasets)
         ave-result (->> (dataset/->k-fold-datasets train-dataset 10 options)
                         (ml/average-prediction-error options loss/mse))]
-    (is (< (double (:average-loss ave-result)) 0.01))))
+    (is (< (double (:average-loss ave-result)) 0.02))))
 
 
 (defn auto-gridsearch-simple
