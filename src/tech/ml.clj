@@ -83,7 +83,7 @@
   not, returns a map the selected option as the key and the probabily as the value.
 
   If regression, returns the sequence of predicated values."
-  [{:keys [options model] :as train-result} dataset]
+  [{:keys [options model thawed-model] :as train-result} dataset]
   (let [feature-columns (:feature-columns options)
         _ (when-not (seq feature-columns)
             (throw (ex-info "Feature columns are missing" {})))
@@ -100,8 +100,9 @@
     ;;If this isn't true you are in trouble
     (assert (= (set feature-columns)
                (set (cf/feature? dataset))))
-    (let [ml-system (registry/system (:model-type options))]
-      (system-proto/predict ml-system options model dataset))))
+    (let [ml-system (registry/system (:model-type options))
+          thawed-model (or thawed-model (system-proto/thaw-model ml-system model))]
+      (system-proto/predict ml-system options thawed-model dataset))))
 
 
 (defn dataset-seq->dataset-model-seq

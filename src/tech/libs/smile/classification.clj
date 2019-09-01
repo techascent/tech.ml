@@ -365,21 +365,25 @@
   ml-proto/PMLSystem
   (system-name [_] :smile.classification)
   (gridsearch-options [system options]
-    (let [entry-metadata (model-type->classification-model (model/options->model-type options))]
+    (let [entry-metadata (model-type->classification-model
+                          (model/options->model-type options))]
       (if-let [retval (:gridsearch-options entry-metadata)]
         retval
         (throw (ex-info "Model type does not support auto gridsearch yet"
                         {:entry-metadata entry-metadata})))))
   (train [system options dataset]
-    (let [entry-metadata (model-type->classification-model (model/options->model-type options))
+    (let [entry-metadata (model-type->classification-model
+                          (model/options->model-type options))
           row-major-dataset (dataset/->row-major dataset options)]
       (-> (if (contains? (:attributes entry-metadata) :online)
             (train-online options entry-metadata row-major-dataset)
             (train-block options entry-metadata row-major-dataset))
           model/model->byte-array)))
-  (predict [system options trained-model-bytes dataset]
+  (thaw-model [system model]
+    (model/byte-array->model model))
+  (predict [system options thawed-model dataset]
     (let [row-major-dataset (dataset/->row-major dataset options)
-          trained-model (model/byte-array->model trained-model-bytes)
+          trained-model thawed-model
           inverse-label-map (ds-options/inference-target-label-inverse-map options)
           ordered-labels (->> inverse-label-map
                               (sort-by first)

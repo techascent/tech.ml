@@ -226,10 +226,12 @@
         (.saveModel model out-s)
         (.toByteArray out-s))))
 
-  (predict [_ options model dataset]
-    (let [model (XGBoost/loadModel (ByteArrayInputStream. model))
-          retval (->> (dataset->dmatrix dataset (dissoc options :label-columns))
-                      (.predict model))]
+  (thaw-model [_ model]
+    (XGBoost/loadModel (ByteArrayInputStream. model)))
+
+  (predict [_ options thawed-model dataset]
+    (let [retval (->> (dataset->dmatrix dataset (dissoc options :label-columns))
+                      (.predict ^Booster thawed-model))]
       (if (= "multi:softprob" (get-objective options))
         (let [inverse-label-map (ds-options/inference-target-label-inverse-map options)
               ordered-labels (->> inverse-label-map

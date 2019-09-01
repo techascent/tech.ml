@@ -275,41 +275,44 @@
         (svm_free_and_destroy_model (PointerByReference. (.getPointer model)))
         retval)))
 
-  (predict [system options model dataset]
+  (thaw-model [system model]
+    ;;SVM load is not reentrant
+    (locking system
+      (let [retval
+            (model/byte-array-file-load->model model svm_load_model)]
+        retval)))
+
+  (predict [system options thawed-model dataset]
     (let [row-major-dataset (dataset/->row-major dataset options)
-          ^Types$SVMModel$ByReference model
-          ;;SVM load is not reentrant
-          (locking system
-            (let [retval
-                  (model/byte-array-file-load->model model svm_load_model)]
-              retval))
+          ^Types$SVMModel$ByReference model thawed-model
           {:keys [nodes]} (dataset->svm-dataset row-major-dataset false)]
-      (if (classification? (model/options->model-type options))
-        (let [label-map (ds-options/inference-target-label-map options)
-              pre-ordered-labels (->> label-map
-                                      (sort-by second)
-                                      (mapv first))
-              model-labels (-> (dtype-jna/unsafe-address->typed-pointer
-                                (Pointer/nativeValue (.label model))
-                                (* (dtype/datatype->byte-size :int32)
-                                   (.nr_class model))
-                                :int32))
-              model-labels (dtype/->vector model-labels)
-              ;;SVM reorders labels
-              ordered-labels (mapv pre-ordered-labels model-labels)
-              probabilities (double-array (.nr_class model))
-              retval (->> nodes
-                          (mapv (fn [^"[Ltech.libs.svm.Types$SVMNode$ByReference;" feature]
-                                  (let [first-node (aget feature 0)
-                                        prediction (svm_predict_probability model first-node probabilities)]
-                                    (zipmap ordered-labels (vec probabilities))))))]
-          retval)
-        (let [retval
-              (->> nodes
-                   (mapv (fn [^"[Ltech.libs.svm.Types$SVMNode$ByReference;" feature]
-                           (let [first-node (aget feature 0)]
-                             (svm_predict model first-node)))))]
-          retval)))))
+      (locking model
+        (if (classification? (model/options->model-type options))
+          (let [label-map (ds-options/inference-target-label-map options)
+                pre-ordered-labels (->> label-map
+                                        (sort-by second)
+                                        (mapv first))
+                model-labels (-> (dtype-jna/unsafe-address->typed-pointer
+                                  (Pointer/nativeValue (.label model))
+                                  (* (dtype/datatype->byte-size :int32)
+                                     (.nr_class model))
+                                  :int32))
+                model-labels (dtype/->vector model-labels)
+                ;;SVM reorders labels
+                ordered-labels (mapv pre-ordered-labels model-labels)
+                probabilities (double-array (.nr_class model))
+                retval (->> nodes
+                            (mapv (fn [^"[Ltech.libs.svm.Types$SVMNode$ByReference;" feature]
+                                    (let [first-node (aget feature 0)
+                                          prediction (svm_predict_probability model first-node probabilities)]
+                                      (zipmap ordered-labels (vec probabilities))))))]
+            retval)
+          (let [retval
+                (->> nodes
+                     (mapv (fn [^"[Ltech.libs.svm.Types$SVMNode$ByReference;" feature]
+                             (let [first-node (aget feature 0)]
+                               (svm_predict model first-node)))))]
+            retval))))))
 
 
 (def system (constantly (->SVMSystem )))

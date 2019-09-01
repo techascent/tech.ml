@@ -342,14 +342,17 @@
                         {:entry-metadata entry-metadata})))))
   (train [system options dataset]
     (let [row-major-dataset (dataset/->row-major dataset options)
-          entry-metadata (model-type->regression-model (model/options->model-type options))]
+          entry-metadata (model-type->regression-model
+                          (model/options->model-type options))]
       (-> (if (contains? (:attributes entry-metadata) :online)
             (train-online options entry-metadata row-major-dataset)
             (train-block options entry-metadata row-major-dataset))
           model/model->byte-array)))
-  (predict [system options trained-model-bytes dataset]
+  (thaw-model [system model]
+    (model/byte-array->model model))
+  (predict [system options thawed-model dataset]
     (let [row-major-dataset (dataset/->row-major dataset options)
-          ^Regression trained-model (model/byte-array->model trained-model-bytes)]
+          ^Regression trained-model thawed-model]
       (->> row-major-dataset
            (map #(double (.predict trained-model ^doubles (:features %))))
            (into-array)))))
