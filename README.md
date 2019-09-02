@@ -5,7 +5,7 @@
 Library to encapsulate a few core concepts of techascent system.
 
 ## Updates
-* Smile now supports elasticnet in main distribution.  Use {:model-type :smile.regression/elasticnet} in your options.
+* Smile now supports elasticnet in main distribution.  Use `{:model-type :smile.regression/elasticnet}` in your options.
 * xgboost per-round error metrics are now [supported](https://github.com/techascent/tech.ml/blob/master/test/tech/libs/xgboost_test.clj#L22).
 
 
