@@ -212,6 +212,11 @@ first try."
                           (filter #(= :string (:datatype %))))})))
   ;;Should do row-major conversion here and make it work later.  We specifically
   ;;know the feature and labels can't change.
+  (log/infof "Gridsearching: %s"
+             (with-out-str
+               (pp/pprint {:top-n top-n
+                           :gridsearch-depth gridsearch-depth
+                           :k-fold k-fold})))
   (let [dataset-seq (if (and k-fold (> (int k-fold) 1))
                       (vec (ds/->k-fold-datasets dataset k-fold options))
                       [(ds/->train-test-split dataset options)])]
