@@ -128,6 +128,14 @@
       (system-proto/predict ml-system options thawed-model dataset))))
 
 
+(defn explain-model
+  ([{:keys [options model] :as train-result} explain-options]
+   (let [ml-system (registry/system (:model-type options))]
+     (system-proto/explain-model ml-system model (merge options explain-options))))
+  ([train-result]
+   (explain-model train-result {})))
+
+
 (defn dataset-seq->dataset-model-seq
   "Given a sequence of {:train-ds ...} datasets, produce a sequence of:
   {:model ...}

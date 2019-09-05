@@ -284,12 +284,10 @@ c/xgboost4j/java/XGBoost.java#L208"))
         (map first retval))))
   ml-proto/PMLExplain
   ;;"https://towardsdatascience.com/be-careful-when-interpreting-your-features-importance-in-xgboost-6e16132588e7"
-  (explain-model [_ model {:keys [importance-type]
+  (explain-model [this model {:keys [importance-type feature-columns]
                            :or {importance-type "gain"}}]
-    (let [^Booster booster (-> (ml-proto/thaw-model _ model)
-                               :thawed-model)
-          feature-columns (->> (get-in model [:options :feature-columns])
-                               (into-array String))
+    (let [^Booster booster (ml-proto/thaw-model this model)
+          feature-columns (into-array String feature-columns)
           ^Map score-map (.getScore booster
                                     ^"[Ljava.lang.String;" feature-columns
                                     ^String importance-type)]
