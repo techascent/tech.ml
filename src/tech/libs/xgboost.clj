@@ -213,7 +213,8 @@
                 (log/warn "Early stopping indicated but watches has undefined iteration order.
 Early stopping will always use the 'last' of the watches as defined by the iteration
 order of the watches map.  Consider using a java.util.LinkedHashMap for watches.
-https://github.com/dmlc/xgboost/blob/master/jvm-packages/xgboost4j/src/main/java/ml/dmlc/xgboost4j/java/XGBoost.java#L208"))
+https://github.com/dmlc/xgboost/blob/master/jvm-packages/xgboost4j/src/main/java/ml/dml
+c/xgboost4j/java/XGBoost.java#L208"))
             watch-names (->> base-watches
                              (map-indexed (fn [idx [k v]]
                                             [idx k]))
@@ -280,7 +281,26 @@ https://github.com/dmlc/xgboost/blob/master/jvm-packages/xgboost4j/src/main/java
                    (map (fn [output-vec]
                           (zipmap ordered-labels output-vec))))]
           label-maps)
-        (map first retval)))))
+        (map first retval))))
+  ml-proto/PMLExplain
+  ;;"https://towardsdatascience.com/be-careful-when-interpreting-your-features-importance-in-xgboost-6e16132588e7"
+  (explain-model [_ model {:keys [importance-type]
+                           :or {importance-type "gain"}}]
+    (let [^Booster booster (-> (ml-proto/thaw-model _ model)
+                               :thawed-model)
+          feature-columns (->> (get-in model [:options :feature-columns])
+                               (into-array String))
+          ^Map score-map (.getScore booster
+                                    ^"[Ljava.lang.String;" feature-columns
+                                    ^String importance-type)]
+      ;;It's not a great map...Something is off about iteration so I have
+      ;;to transform it back into something sane.
+      {importance-type
+       (->> (keys score-map)
+            (map (fn [item-name]
+                   [item-name
+                    (.get score-map item-name)]))
+            (sort-by second >))})))
 
 
 (def system

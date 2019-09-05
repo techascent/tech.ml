@@ -17,3 +17,7 @@ or a clojure hash map.")
     "Predict the result given this model.  Regression predictions can be sequences of
 doubles as can binary classification predictions.  Multiclass predictions should have
 each return a map of class probabilities."))
+
+
+(defprotocol PMLExplain
+  (explain-model [system model options]))
