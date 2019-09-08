@@ -1,6 +1,7 @@
 (ns tech.ml.classification
   (:require [tech.ml.dataset :as ds]
-            [tech.v2.datatype.pprint :as dtype-pp]))
+            [tech.v2.datatype.pprint :as dtype-pp]
+            [tech.ml :as ml]))
 
 
 (defn probability-distributions->labels
@@ -56,3 +57,12 @@
          (ds/->>dataset)
          ;;Ensure order is consistent
          (#(ds/select-columns % column-names)))))
+
+
+(defn confusion-ds
+  [model test-ds]
+  (let [predictions (ml/predict model test-ds)
+        answers (ds/labels test-ds)]
+    (-> (probability-distributions->labels predictions)
+        (confusion-map (ds/labels test-ds))
+        (confusion-map->ds))))
