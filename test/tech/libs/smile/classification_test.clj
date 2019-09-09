@@ -45,7 +45,7 @@
 
 (deftest svm-gridsearch
   (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/svm
-                                     :classification-loss 0.25}))
+                                     :classification-loss 0.30}))
 
 
 (deftest svm-binary
@@ -97,7 +97,7 @@
 
 (deftest logistic-regression-gridsearch
   (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/logistic-regression
-                                     :classification-loss 0.25}))
+                                     :classification-loss 0.30}))
 
 
 ;;Default naive-bayes completely fails.
