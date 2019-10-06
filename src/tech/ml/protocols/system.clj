@@ -21,3 +21,17 @@ each return a map of class probabilities."))
 
 (defprotocol PMLExplain
   (explain-model [system model options]))
+
+
+(defprotocol PInternalMLModelExplain
+  (model-explain-model [model options]))
+
+
+(extend-type Object
+  PMLExplain
+  (explain-model [this model options]
+    (model-explain-model (thaw-model this model) options))
+  PInternalMLModelExplain
+  (model-explain-model [model options]
+    (throw (Exception. (format "explain-model is unimplemented for %s"
+                               (:model-type options))))))

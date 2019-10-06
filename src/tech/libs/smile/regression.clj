@@ -6,6 +6,7 @@
             ;;Kernels have to be loaded
             [tech.libs.smile.kernels]
             [tech.v2.datatype :as dtype]
+            [tech.v2.datatype.functional :as dfn]
             [tech.libs.smile.utils :as utils]
             [tech.ml.gridsearch :as ml-gs]
             [clojure.reflect :refer [reflect]])
@@ -13,7 +14,11 @@
             GradientTreeBoost$Loss
             NeuralNetwork$ActivationFunction
             Regression
-            OnlineRegression]))
+            RidgeRegression
+            ElasticNet
+            LASSO
+            OnlineRegression]
+           [java.lang.reflect Field]))
 
 
 (def package-name "smile.regression")
@@ -356,6 +361,35 @@
       (->> row-major-dataset
            (map #(double (.predict trained-model ^doubles (:features %))))
            (into-array)))))
+
+
+(defn get-field
+  [obj fname]
+  (let [field (doto (.getDeclaredField (type obj) fname)
+                (.setAccessible true))]
+    (.get field obj)))
+
+(defn explain-linear-model
+  [model {:keys [feature-columns]}]
+  (let [weights (get-field model "w")
+        bias (get-field model "b")]
+    {:bias bias
+     :coefficients (->> (map vector
+                             feature-columns
+                             (dtype/->reader weights))
+                        (sort-by (comp second) >))}))
+
+
+(extend-protocol ml-proto/PInternalMLModelExplain
+  LASSO
+  (model-explain-model [model options]
+    (explain-linear-model model options))
+  RidgeRegression
+  (model-explain-model [model options]
+    (explain-linear-model model options))
+  ElasticNet
+  (model-explain-model [model options]
+    (explain-linear-model model options)))
 
 
 (def system (constantly (->SmileRegression)))
