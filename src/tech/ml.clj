@@ -108,7 +108,7 @@
   [{:keys [options model thawed-model] :as train-result} dataset]
   (let [feature-columns (:feature-columns options)
         _ (when-not (seq feature-columns)
-            (throw (ex-info "Feature columns are missing" {})))
+            (throw (ex-info "Feature columns are missing" train-result)))
         ;;Order columns identical to training and remove anything else.
         ;;The select implicitly checks that the columns exist.
 
