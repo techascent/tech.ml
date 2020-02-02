@@ -4,5 +4,4 @@
         ml.dmlc/xgboost4j                {:mvn/version "0.90"
                                           :exclusions [org.scala-lang/scala-library
                                                        org.scala-lang/scala-compiler
-                                                       org.scala-lang/scala-reflect]}
-        org.ow2.asm/asm                  {:mvn/version "5.1"}}}
+                                                       org.scala-lang/scala-reflect]}}}
