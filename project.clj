@@ -1,4 +1,4 @@
-(defproject techascent/tech.ml "1.71"
+(defproject techascent/tech.ml "1.72-SNAPSHOT"
   :description "Base concepts of the techascent ml suite"
   :url "http://github.com/techascent/tech.ml-base"
   :license {:name "Eclipse Public License"
