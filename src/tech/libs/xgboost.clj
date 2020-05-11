@@ -287,7 +287,7 @@ c/xgboost4j/java/XGBoost.java#L208"))
   (explain-model [this model {:keys [importance-type feature-columns]
                            :or {importance-type "gain"}}]
     (let [^Booster booster (ml-proto/thaw-model this model)
-          feature-columns (into-array String feature-columns)
+          feature-columns (into-array String (map str feature-columns))
           ^Map score-map (.getScore booster
                                     ^"[Ljava.lang.String;" feature-columns
                                     ^String importance-type)]
