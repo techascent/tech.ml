@@ -1,4 +1,4 @@
-(defproject techascent/tech.ml "2.0-beta-43-1-SNAPSHOT"
+(defproject techascent/tech.ml "2.0-beta-44"
   :description "Base concepts of the techascent ml suite"
   :url "http://github.com/techascent/tech.ml-base"
   :license {:name "Eclipse Public License"
@@ -6,6 +6,5 @@
   :plugins [[lein-tools-deps "0.4.5"]]
   :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
   :lein-tools-deps/config {:config-files [:install :user :project]}
-  :profiles {:dev {:dependencies [[org.clojure/clojure "1.10.1"]
-                                  [ch.qos.logback/logback-classic "1.1.3"]]}}
+  :profiles {:dev {:lein-tools-deps/config {:resolve-aliases [:test]}}}
   :java-source-paths ["java"])
