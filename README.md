@@ -12,6 +12,7 @@ number of spurious releases.
 
 * Smile now supports elasticnet in main distribution.  Use `{:model-type :smile.regression/elasticnet}` in your options.
 * xgboost per-round error metrics and early stopping are now supported.  Check out our xgboost [metrics walkthrough](https://github.com/techascent/tech.ml/blob/master/docs/xgboost_metrics.md).
+* Example project [inferring rescue unit response times](https://nextjournal.com/chrisn/boulder-rescue-response-times/) for Boulder, Colorado using XGBoost. 
 
 
 
