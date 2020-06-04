@@ -1,5 +1,6 @@
 (ns tech.libs.xgboost
   (:require [tech.v2.datatype :as dtype]
+
             [tech.v2.tensor :as dtt]
             [tech.parallel :as parallel]
             [tech.ml.model :as model]
@@ -272,19 +273,15 @@ c/xgboost4j/java/XGBoost.java#L208"))
     (let [retval (->> (dataset->dmatrix dataset (dissoc options :label-columns))
                       (.predict ^Booster thawed-model))]
       (if (= "multi:softprob" (get-objective options))
-        (let [inverse-label-map (ds-options/inference-target-label-inverse-map options)
-              ordered-labels (->> inverse-label-map
-                                  (sort-by first)
-                                  (mapv second))
-              label-maps
-              (->> retval
-                   (map (fn [output-vec]
-                          (zipmap ordered-labels output-vec))))]
-          label-maps)
+        (dtype/make-reader
+         :posterior-probabilities
+         (alength retval)
+         (aget retval idx))
         (dtype/make-reader
          :float32
          (alength retval)
          (aget ^floats (aget retval idx) 0)))))
+
   ml-proto/PMLExplain
   ;;"https://towardsdatascience.com/be-careful-when-interpreting-your-features-importance-in-xgboost-6e16132588e7"
   (explain-model [this model {:keys [importance-type feature-columns]
