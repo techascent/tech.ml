@@ -193,7 +193,9 @@
 ;;The gridsearch error reporter is called when there is an error during gridsearch.
 ;;It is called like so:
 ;;(*gridsearch-error-reporter options-map error)
-(def ^:dynamic *gridsearch-error-reporter* nil)
+(def ^:dynamic *gridsearch-error-reporter* #(log/warn %2 (with-out-str
+                                                           (clojure.pprint/pprint
+                                                            %1))))
 
 
 (defn gridsearch
