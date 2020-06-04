@@ -191,13 +191,12 @@
                             (dtype/make-container :java-array
                                                   (dtype/get-datatype predictions)
                                                   predictions))
-              target-cols (->> (map meta src-ds)
-                               (filter #(= :inference (:column-type %))))
+              target-cols (ds/inference-target-column-names src-ds)
               retval (ds/assoc src-ds :prediction predictions)]
           ;;If the answers were passed in then (lazily) calculate the residuals
           (if (= 1 (count target-cols))
             (ds/assoc retval :residual (dfn/- (ds/column src-ds
-                                                         (:name (first target-cols)))
+                                                         (first target-cols))
                                               predictions))
             retval))))))
 

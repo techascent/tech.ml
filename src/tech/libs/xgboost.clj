@@ -184,7 +184,7 @@
     ;;https://xgboost.readthedocs.io/en/latest/parameter.html
     {:subsample (ml-gs/linear [0.1 1.0])
      :scale-pos-weight (ml-gs/linear [0.1 2.0])
-     :max-depth (comp long (ml-gs/linear-long [2 500]))
+     :max-depth (comp long (ml-gs/linear-long [2 50]))
      :lambda (ml-gs/linear [0.01 2])
      :gamma (ml-gs/exp [0.001 100])
      :eta (ml-gs/linear [0 1])
