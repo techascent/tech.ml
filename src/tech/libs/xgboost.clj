@@ -281,7 +281,10 @@ c/xgboost4j/java/XGBoost.java#L208"))
                    (map (fn [output-vec]
                           (zipmap ordered-labels output-vec))))]
           label-maps)
-        (map first retval))))
+        (dtype/make-reader
+         :float32
+         (alength retval)
+         (aget ^floats (aget retval idx) 0)))))
   ml-proto/PMLExplain
   ;;"https://towardsdatascience.com/be-careful-when-interpreting-your-features-importance-in-xgboost-6e16132588e7"
   (explain-model [this model {:keys [importance-type feature-columns]
