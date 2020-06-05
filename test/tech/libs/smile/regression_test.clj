@@ -37,14 +37,9 @@
                                 :accuracy 1.2}))
 
 
-;; (deftest regression-basic-gaussian-process
-;;   (verify-reg/basic-regression {:model-type :smile.regression/gaussian-process
-;;                                 :accuracy 0.3}))
-
-
-;; (deftest regression-basic-random-forest
-;;   (verify-reg/basic-regression {:model-type :smile.regression/random-forest
-;;                                 :accuracy 2}))
+(deftest regression-basic-random-forest
+  (verify-reg/basic-regression {:model-type :smile.regression/random-forest
+                                :accuracy 2}))
 
 
 (comment

@@ -8,7 +8,7 @@
             [tech.ml.gridsearch :as ml-gs]
             [tech.ml.dataset.options :as ds-options]
             [camel-snake-kebab.core :refer [->kebab-case]])
-  (:import [smile.classification AdaBoost]))
+  (:import [smile.classification SoftClassifier AdaBoost]))
 
 
 (set! *warn-on-reflection* true)

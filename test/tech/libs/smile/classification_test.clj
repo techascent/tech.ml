@@ -1,10 +1,11 @@
 (ns tech.libs.smile.classification-test
   (:require [tech.verify.ml.classification :as verify-cls]
-            [tech.libs.smile.classification]
+            ;; [tech.libs.smile.classification]
             [tech.ml.utils :as utils]
             [tech.ml.dataset :as ds]
             [tech.ml.dataset.pipeline :as dsp]
             [tech.ml :as ml]
+            [tech.libs.smile.protocols :as smile-proto]
             [clojure.test :refer :all])
   (:import [ch.qos.logback.classic Logger]
            [ch.qos.logback.classic Level]))
@@ -12,11 +13,8 @@
 
 (utils/set-slf4j-log-level :warn)
 
-;;Due https://github.com/haifengl/smile/issues/554 none of these tests are
-;;going to work.
-
-;; (deftest ada-boost
-;;   (verify-cls/classify-fruit {:model-type :smile.classification/ada-boost}))
+(deftest ada-boost
+  (verify-cls/classify-fruit {:model-type :smile.classification/ada-boost}))
 
 
 ;; (deftest ada-boost-gridsearch
