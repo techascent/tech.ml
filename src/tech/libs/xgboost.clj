@@ -1,17 +1,14 @@
 (ns tech.libs.xgboost
   (:require [tech.v2.datatype :as dtype]
-
-            [tech.v2.tensor :as dtt]
-            [tech.parallel :as parallel]
             [tech.ml.model :as model]
             [tech.ml.protocols.system :as ml-proto]
             [tech.ml.registry :as ml-registry]
-            [tech.ml :as ml]
             [tech.ml.utils :as utils]
+            [tech.ml.util :as ml-util]
             [tech.ml.gridsearch :as ml-gs]
             [clojure.string :as s]
-            [tech.ml.dataset :as dataset]
-            [tech.ml.dataset.options :as ds-options]
+            [clojure.set :as set]
+            [tech.ml.dataset :as ds]
             [clojure.tools.logging :as log])
   (:refer-clojure :exclude [load])
   (:import [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
@@ -140,7 +137,7 @@
   "Create an iterator to labeled points from a possibly quite large
   sequence of maps.  Sets expected length to length of first entry"
   ^Iterator [dataset options]
-  (->> (dataset/->row-major dataset (assoc options :datatype :float32))
+  (->> (ds/->row-major dataset (assoc options :datatype :float32))
        ;;dataset is now coalesced into float arrays for the values
        ;;and a single float for the label (if it exists).
        (map (fn [{:keys [:features :label]}]
@@ -221,7 +218,7 @@ c/xgboost4j/java/XGBoost.java#L208"))
                                             [idx k]))
                              (into {}))
             label-map (when (multiclass-objective? objective)
-                        (dataset/inference-target-label-map dataset))
+                        (ds/inference-target-label-map dataset))
             params (->> (-> (dissoc options :model-type :watches)
                             (assoc :objective objective))
                         ;;Adding in some defaults
@@ -260,7 +257,8 @@ c/xgboost4j/java/XGBoost.java#L208"))
               (map (fn [[watch-idx [watch-name watch-data]]]
                      [(get watch-names watch-idx)
                       (aget metrics-data watch-idx)]))
-              (into {}))})))
+              (ds/name-values-seq->dataset)
+              (#(vary-meta % assoc :name :metrics)))})))
 
   (thaw-model [_ model]
     (-> (if (map? model)
@@ -287,18 +285,25 @@ c/xgboost4j/java/XGBoost.java#L208"))
   (explain-model [this model {:keys [importance-type feature-columns]
                            :or {importance-type "gain"}}]
     (let [^Booster booster (ml-proto/thaw-model this model)
-          feature-columns (into-array String (map str feature-columns))
+          feature-col-map (->> feature-columns
+                               (map (fn [name]
+                                      [name (ml-util/->str name)]))
+                               (into {}))
+          feature-columns (into-array String (map #(get feature-col-map %)
+                                                  feature-columns))
           ^Map score-map (.getScore booster
                                     ^"[Ljava.lang.String;" feature-columns
-                                    ^String importance-type)]
+                                    ^String importance-type)
+          col-inv-map (set/map-invert feature-col-map)]
       ;;It's not a great map...Something is off about iteration so I have
       ;;to transform it back into something sane.
-      {importance-type
-       (->> (keys score-map)
-            (map (fn [item-name]
-                   [item-name
-                    (.get score-map item-name)]))
-            (sort-by second >))})))
+      (->> (keys score-map)
+           (map (fn [item-name]
+                  {:importance-type importance-type
+                   :colname (get col-inv-map item-name)
+                   (keyword importance-type) (.get score-map item-name)}))
+           (sort-by (keyword importance-type) >)
+           (ds/->>dataset)))))
 
 
 (def system

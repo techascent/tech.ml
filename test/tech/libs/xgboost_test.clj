@@ -6,7 +6,7 @@
             [tech.v2.datatype.functional :as dfn]
             [tech.ml :as ml]
             [tech.ml.loss :as loss]
-            [tech.ml.dataset :as dataset]
+            [tech.ml.dataset :as ds]
             [tech.libs.xgboost]))
 
 
@@ -27,11 +27,11 @@
                  :round 25
                  :eval-metric "mae"}
         model (ml/train options train-dataset)
-        watch-data (get-in model [:model :metrics :test-ds])
+        watch-data (get-in model [:model :metrics])
         test-output (ml/predict model test-dataset)
-        mse (loss/mse test-output (dataset/labels test-dataset))]
-    (is (= 25 (dtype/ecount watch-data)))
-    (is (not= 0 (dfn/reduce-+ watch-data)))
+        mse (loss/mse test-output (ds/labels test-dataset))]
+    (is (= 25 (ds/row-count watch-data)))
+    (is (not= 0 (dfn/reduce-+ (watch-data :test-ds))))
     (is (not (nil? watch-data)))
     (is (< mse (double 0.2)))))
 

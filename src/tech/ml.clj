@@ -241,8 +241,8 @@
               (let [{model :retval
                      train-time :milliseconds}
                     (utils/time-section (train options train-ds))]
-                (-> (merge (assoc model :train-time train-time)
-                           (dissoc dataset-entry :train-ds))))))))
+                (merge (assoc model :train-time train-time)
+                       (dissoc dataset-entry :train-ds)))))))
 
 
 (defn average-prediction-error

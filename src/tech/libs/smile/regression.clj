@@ -6,41 +6,75 @@
             ;;Kernels have to be loaded
             ;;[tech.libs.smile.kernels]
             [tech.v2.datatype :as dtype]
-            [tech.v2.datatype.functional :as dfn]
             [tech.ml.gridsearch :as ml-gs]
-            [clojure.reflect :refer [reflect]])
+            [tech.ml.util :as ml-util])
   (:import [smile.regression
             Regression
-            ;; GradientTreeBoost$Loss
+            GradientTreeBoost
             ;; NeuralNetwork$ActivationFunction
             RidgeRegression
             ElasticNet
             LASSO
+            LinearModel
             ;; OnlineRegression
             ]
            [smile.data.formula Formula]
+           [smile.data DataFrame]
            [java.lang.reflect Field]
            [java.util Properties List]))
 
 
-(def package-name "smile.regression")
+(set! *warn-on-reflection* true)
 
 
-(def regression-class-names
-  #{
-    "ElasticNet"
-    "GaussianProcessRegression"
-    "GradientTreeBoost"
-    "LASSO"
-    "NeuralNetwork"
-    "OLS"
-    "RandomForest"
-    "RBFNetwork"
-    "RegressionTree"
-    "RidgeRegression"
-    "RLS"
-    "SVR"
-    })
+(def cart-loss-table
+  {
+   ;; Least squares regression. Least-squares is highly efficient for
+   ;; normally distributed errors but is prone to long tails and outliers.
+   :least-squares "LeastSquares"
+   ;; Quantile regression. The gradient tree boosting based
+   ;; on this loss function is highly robust. The trees use only order
+   ;; information on the input variables and the pseudo-response has only
+   ;; two values {-1, +1}. The line searches (terminal node values) use
+   ;; only specified quantile ratio.
+   :quantile "Quantile"
+   ;; Least absolute deviation regression. The gradient tree boosting based
+   ;; on this loss function is highly robust. The trees use only order
+   ;; information on the input variables and the pseudo-response has only
+   ;; two values {-1, +1}. The line searches (terminal node values) use
+   ;; only medians. This is a special case of quantile regression of q = 0.5.
+   :least-absolute-deviation "LeastAbsoluteDeviation"
+   ;; Huber loss function for M-regression, which attempts resistance to
+   ;; long-tailed error distributions and outliers while maintaining high
+   ;; efficency for normally distributed errors.
+   :huber "Huber"})
+
+
+(defn- predict-linear-model
+  [^LinearModel thawed-model ds options]
+  (let [^List row-major-dataset (ds/->row-major ds options)]
+    (->> (dtype/make-reader
+          :float64
+          (ds/row-count ds)
+          (.predict thawed-model
+                    ^doubles (:features (.get row-major-dataset idx))))
+         (dtype/make-container :java-array :float64))))
+
+
+;;Currently failing for the gradient boosted trees
+(defn- predict-tuple
+  [^Regression thawed-model ds options]
+  (let [df (ds/dataset->smile-dataframe ds)]
+    (println thawed-model)
+    (println (.formula thawed-model))
+    (println (.toString df))
+    (println (.response (.formula thawed-model)))
+    (println (.predict thawed-model (.get df 0)))
+    (->> (dtype/make-reader
+          :float64
+          (ds/row-count ds)
+          (.predict thawed-model (.get df idx)))
+         (dtype/make-container :java-array :float64))))
 
 
 (def regression-metadata
@@ -60,83 +94,14 @@
                             :type :int32
                             :default (int 1000)
                             :range :>0}]
-                 :property-name-stem "smile.elastic.net"
-                 :class-name "ElasticNet"
                  :gridsearch-options {:lambda1 (ml-gs/exp [1e-2 1e2])
                                       :lambda2 (ml-gs/exp [1e-4 1e2])
                                       :tolerance (ml-gs/exp [1e-6 1e-2])
                                       :max-iterations (ml-gs/exp [1e4 1e7])}
-                 :constructor #(ElasticNet/fit %1 %2 %3)}
+                 :property-name-stem "smile.elastic.net"
+                 :constructor #(ElasticNet/fit %1 %2 %3)
+                 :predictor predict-linear-model}
 
-   ;; :gaussian-process {:options [{:name :kernel
-   ;;                                :type :mercer-kernel
-   ;;                               :default {:kernel-type :gaussian}}
-   ;;                              {:name :lambda
-   ;;                               :type :float64
-   ;;                               :range :>0
-   ;;                               :default 2}]
-   ;;                    :datatypes #{:float64-array :sparse :int32-array}
-   ;;                    :class-name "GaussianProcessRegression"
-   ;;                    :attributes #{:object-data}}
-
-   ;; :gaussian-process-regressors
-   ;; {:options [{:name :inducing-samples
-   ;;             :type :input-array}
-   ;;            {:name :kernel
-   ;;             :type :mercer-kernel
-   ;;             :default {:kernel-type :gaussian}}
-   ;;            {:name :lambda
-   ;;             :type :float64
-   ;;             :range :>0
-   ;;             :default 2}]
-   ;;  :datatypes #{:float64-array :sparse :int32-array}
-   ;;  :class-name "GaussianProcessRegression"
-   ;;  :attributes #{:object-data}}
-
-   ;; :gaussian-process-nystrom
-   ;; {:options [{:name :inducing-samples
-   ;;             :type :input-array}
-   ;;            {:name :kernel
-   ;;             :type :mercer-kernel
-   ;;             :default {:kernel-type :gaussian}}
-   ;;            {:name :lambda
-   ;;             :type :float64
-   ;;             :range :>0
-   ;;             :default 2}
-   ;;            {:name :nystrom-marker
-   ;;             :type :boolean
-   ;;             :default true}]
-   ;;  :datatypes #{:float64-array :sparse :int32-array}
-   ;;  :class-name "GaussianProcessRegression"
-   ;;  :attributes #{:object-data}}
-
-   ;; :gradient-tree-boost
-   ;; {:options [{:name :loss
-   ;;             :type :enumeration
-   ;;             :class-type GradientTreeBoost$Loss
-   ;;             :lookup-table
-   ;;             {:least-squares GradientTreeBoost$Loss/LeastSquares
-   ;;              :least-absolute-deviation GradientTreeBoost$Loss/LeastAbsoluteDeviation
-   ;;              :huber GradientTreeBoost$Loss/Huber}
-   ;;             :default :least-squares}
-   ;;            {:name :n-trees
-   ;;             :type :int32
-   ;;             :default 500
-   ;;             :range :>0}
-   ;;            {:name :max-nodes
-   ;;             :type :int32
-   ;;             :default 6
-   ;;             :range :>0}
-   ;;            {:name :shrinkage
-   ;;             :type :float64
-   ;;             :default 0.005
-   ;;             :range :>0}
-   ;;            {:name :sampling-fraction
-   ;;             :type :float64
-   ;;             :default 0.7
-   ;;             :range [0.0 1.0]}]
-   ;;  :datatypes #{:float64-array}
-   ;;  :class-name "GradientTreeBoost"}
 
    :lasso
    {:options [{:name :lambda
@@ -154,8 +119,10 @@
     :gridsearch-options {:lambda (ml-gs/exp [1e-4 1e1])
                          :tolerance (ml-gs/exp [1e-6 1e-2])
                          :max-iterations (ml-gs/linear-long [1e4 1e7])}
-    :class-name "LASSO"
-    :datatypes #{:float64-array}}
+    :property-name-stem "smile.lasso"
+    :constructor #(LASSO/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
+    :predictor predict-linear-model
+    }
 
 
    :ridge
@@ -164,101 +131,45 @@
                :default 1.0
                :range :>0}]
     :gridsearch-options {:lambda (ml-gs/exp [1e-4 1e4])}
-    :class-name "RidgeRegression"
-    :datatypes #{:float64-array}}
+    :property-name-stem "smile.ridge"
+    :constructor #(RidgeRegression/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
+    :predictor predict-linear-model}
 
-   ;; :neural-network
-   ;; {:options [{:name :activation-function
-   ;;             :type :enumeration
-   ;;             :class-type NeuralNetwork$ActivationFunction
-   ;;             :lookup-table
-   ;;             {:logistic-sigmoid NeuralNetwork$ActivationFunction/LOGISTIC_SIGMOID
-   ;;              :tanh NeuralNetwork$ActivationFunction/TANH}
-   ;;             :default :logistic-sigmoid}
-   ;;            {:name :momentum
-   ;;             :type :float64
-   ;;             :default 1e-4
-   ;;             :range :>0}
-   ;;            {:name :weight-decay
-   ;;             :type :float64
-   ;;             :default 0.9}
-   ;;            {:name :layer-sizes
-   ;;             :type :int32-array
-   ;;             :default (int-array [100])}
-   ;;            {:name :learning-rate
-   ;;             :default 0.1
-   ;;             :type :float64
-   ;;             :setter "setLearningRate"}]
-   ;;  :class-name "NeuralNetwork"
-   ;;  :datatypes #{:float64-array}
-   ;;  :attributes #{:online}}
 
-   ;; :ordinary-least-squares
-   ;; {:options [{:name :svd?
-   ;;             :type :boolean
-   ;;             :default false}]
-   ;;  :gridsearch-options {:svd? (ml-gs/nominative [true false])}
-   ;;  :class-name "OLS"
-   ;;  :datatypes #{:float64-array}}
+   :gradient-tree-boost
+   {:options [{:name :trees
+               :type :int32
+               :default 500
+               :range :>0}
+              {:name :loss
+               :type :enumeration
+               :lookup-table cart-loss-table
+               :default :least-absolute-deviation}
+              {:name :max-depth
+               :type :int32
+               :default 20
+               :range :>0}
+              {:name :max-nodes
+               :type :int32
+               :default 6
+               :range :>0}
+              {:name :node-size
+               :type :int32
+               :default 5
+               :range :>0}
+              {:name :shrinkage
+               :type :float64
+               :default 0.05
+               :range :>0}
+              {:name :sample-rate
+               :type :float64
+               :default 0.7
+               :range [0.0 1.0]}]
+    :property-name-stem "smile.bgt.trees"
+    :constructor #(GradientTreeBoost/fit %1 %2 %3)
+    :predictor predict-tuple}
 
-   ;; :recursive-least-squares
-   ;; {:options [{:name :forgetting-factor
-   ;;             :default 1.0
-   ;;             :type :float64}]
-   ;;  :gridsearch-options {:forgetting-factor (ml-gs/exp [1e-2 1])}
-   ;;  :datatypes #{:float64-array}
-   ;;  :class-name "RLS"}
-
-   ;; :support-vector
-   ;; {:options [{:name :kernel
-   ;;             :type :mercer-kernel
-   ;;             :default {:kernel-type :gaussian}}
-   ;;            {:name :loss-function-error-threshold
-   ;;             :default 0.1
-   ;;             :type :float64
-   ;;             :altname "eps"}
-   ;;            {:name :soft-margin-penalty
-   ;;             :default 1.0
-   ;;             :type :float64
-   ;;             :altname "C"}
-   ;;            {:name :tolerance
-   ;;             :default 1e-3
-   ;;             :type :float64
-   ;;             :altname "tol"}]
-   ;;  :gridsearch-options {:kernel {:kernel-type (ml-gs/nominative [:gaussian :linear])}
-   ;;                       :loss-function-error-threshold (ml-gs/exp [1e-4 1e-1])
-   ;;                       :soft-margin-penalty (ml-gs/exp [1e-4 1e2])
-   ;;                       :tolerance (ml-gs/linear [1e-9 1e-1])}
-   ;;  :class-name "SVR"
-   ;;  :datatypes #{:float64-array :sparse :int32-array}
-   ;;  :attributes #{:object-data}}
-   ;; :random-forest
-   ;; {:options [{:name :ntrees
-   ;;             :type :int32
-   ;;             :default 500}
-   ;;            {:name :maxNodes
-   ;;             :type :int32
-   ;;             :default 100}
-   ;;            {:name :node-size
-   ;;             :type :int32
-   ;;             :default 5}
-   ;;            {:name :num-decision-variables
-   ;;             :type :int32
-   ;;             :default #(long (Math/ceil
-   ;;                              (double
-   ;;                               (/ (utils/options->feature-ecount %)
-   ;;                                  3))))}
-   ;;            {:name :sampling-rate
-   ;;             :type :float64
-   ;;             :default 1.0}]
-   ;;  :class-name "RandomForest"
-   ;;  :attributes #{:attributes}}
    })
-
-
-(def marker-interfaces
-  {:regression "Regression"
-   :online-regression "OnlineRegression"})
 
 
 (defmulti model-type->regression-model
@@ -277,44 +188,6 @@
 (defmethod model-type->regression-model :regression
   [model-type]
   (get regression-metadata :elastic-net))
-
-
-(defn reflect-regression
-  [cls-name]
-  (reflect (Class/forName (str package-name "." cls-name))))
-
-
-;; (defn- train-block
-;;   "Train by downloading all the data into a fixed matrix."
-;;   [options entry-metadata row-major-dataset]
-;;   (let [value-seq (->> row-major-dataset
-;;                        (map :features))
-;;         [x-data x-datatype] (if (contains? (:attributes entry-metadata)
-;;                                            :object-data)
-;;                               [(object-array value-seq) :object-array]
-;;                               [(into-array value-seq) :float64-array-array])
-
-;;         n-entries (first (dtype/shape x-data))
-;;         ^doubles y-data (first (dtype/copy-raw->item!
-;;                                 (map :label row-major-dataset)
-;;                                 (dtype/make-array-of-type :float64 n-entries)
-;;                                 0))
-;;         data-constructor-arguments [{:type x-datatype
-;;                                      :default x-data
-;;                                      :name :training-data}
-;;                                     {:type :float64-array
-;;                                      :default y-data
-;;                                      :name :labels}]]
-;;     (-> (utils/prepend-data-constructor-arguments entry-metadata options
-;;                                                   data-constructor-arguments)
-;;         (utils/construct package-name options))))
-
-
-(defn- ->str
-  [item]
-  (if (or (keyword? item) (symbol? item))
-    (name item)
-    (str item)))
 
 
 (defn options->properties
@@ -349,7 +222,7 @@
                                (filter #(= :inference (:column-type %))))
           _ (when-not (= 1 (count target-colnames))
               (throw (Exception. "Dataset has none or too many target columns.")))
-          formula (Formula. (->str (:name (first target-colnames))))
+          formula (Formula. (ml-util/->str (:name (first target-colnames))))
           data (ds/dataset->smile-dataframe dataset)
           properties (options->properties entry-metadata options)
           ctor (:constructor entry-metadata)
@@ -358,21 +231,18 @@
   (thaw-model [system model]
     (model/byte-array->model model))
   (predict [system options thawed-model dataset]
-    (let [^List row-major-dataset (ds/->row-major dataset options)
-          ^Regression trained-model thawed-model]
-      (->> (dtype/make-reader
-            :float64
-            (ds/row-count dataset)
-            (.predict trained-model
-                      ^doubles (:features (.get row-major-dataset idx))))
-           (dtype/make-container :java-array :float64)))))
+    (let [entry-metadata (model-type->regression-model
+                          (model/options->model-type options))
+          predictor (:predictor entry-metadata)]
+      (predictor thawed-model dataset options))))
 
 
 (defn get-field
   [obj fname]
-  (let [field (doto (.getDeclaredField (type obj) fname)
+  (let [field (doto (.getDeclaredField (.getClass ^Object obj) fname)
                 (.setAccessible true))]
     (.get field obj)))
+
 
 (defn explain-linear-model
   [model {:keys [feature-columns]}]

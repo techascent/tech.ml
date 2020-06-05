@@ -5,7 +5,7 @@
 
 
 (defn ->str
-  [item]
+  ^String [item]
   (if (or (keyword? item) (symbol? item))
     (name item)
     (str item)))
