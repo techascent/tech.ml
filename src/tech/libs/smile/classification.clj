@@ -1,26 +1,36 @@
 (ns tech.libs.smile.classification
-  (:require [clojure.reflect :refer [reflect]]
-            [tech.v2.datatype :as dtype]
+  (:require [tech.v2.datatype :as dtype]
+            [tech.v2.datatype.casting :as casting]
             [tech.ml.protocols.system :as ml-proto]
             [tech.ml.model :as model]
             [tech.ml.registry :as registry]
-            [tech.ml.dataset :as dataset]
+            [tech.ml.dataset :as ds]
             [tech.ml.gridsearch :as ml-gs]
+            [tech.ml.util :as ml-util]
             [tech.ml.dataset.options :as ds-options]
-            [camel-snake-kebab.core :refer [->kebab-case]])
-  (:import [smile.classification SoftClassifier AdaBoost]))
+            [tech.libs.smile.protocols :as smile-proto])
+  (:import [smile.classification SoftClassifier AdaBoost]
+           [smile.data.formula Formula]))
 
 
 (set! *warn-on-reflection* true)
 
 
 (defn tuple-predict-posterior
-  [^SoftClassifier model ds options]
+  [^SoftClassifier model ds options n-labels]
+  (let [df (ds/dataset->smile-dataframe ds)]
+    (smile-proto/initialize-model-formula! model options)
+    (->> (dtype/make-reader
+          :posterior-probabilities
+          (ds/row-count ds)
+          (let [posterior (double-array n-labels)]
+            (.predict model (.get df idx) posterior)
+            posterior))
+         (dtype/make-container :typed-buffer :posterior-probabilities))))
 
-  )
 
 (def classifier-metadata
-  {:ada-boost {:name :ada-boost
+  {:ada-boost {:name :ada-boosts
                :options [{:name :trees
                           :type :int32
                           :default 500}
@@ -33,7 +43,7 @@
                          {:name :node-size
                           :type :int32
                           :default 1}]
-               :gridsearch-options {:ntrees (ml-gs/linear-long [2 500])
+               :gridsearch-options {:trees (ml-gs/linear-long [2 500])
                                     :max-nodes (ml-gs/linear-long [4 1000])}
                :property-name-stem "smile.databoost"
                :constructor #(AdaBoost/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
@@ -248,66 +258,17 @@
    })
 
 
-(defn model-type->classification-model
+(defmulti model-type->classification-model
+  (fn [model-type] model-type))
+
+
+(defmethod model-type->classification-model :default
   [model-type]
   (if-let [retval (get classifier-metadata model-type)]
     retval
-    (throw (ex-info "Unrecognized model type"
+    (throw (ex-info "Failed to find classification model"
                     {:model-type model-type
                      :available-types (keys classifier-metadata)}))))
-
-
-
-(defn- train-online
-  "Online systems can train iteratively.  They can handle therefore much larger
-  datasets."
-  [options entry-metadata row-major-dataset]
-  (let [;;Do basic NN shit to make it work.  Users don't need to specify the
-        ;;parts that are dataset specific (input-size) *or* that never change
-        ;;(output-size).
-        ^OnlineClassifier untrained
-        (-> (utils/prepend-data-constructor-arguments entry-metadata options [])
-            (utils/construct package-name options))]
-    (->> row-major-dataset
-         (map #(.learn untrained ^doubles (:features %)
-                       (int (dtype/get-value (:label %) 0))))
-         dorun)
-    (when (= (:name entry-metadata) :svm)
-      (let [^SVM sort-of-trained untrained]
-        (.trainPlattScaling sort-of-trained
-                            (->> (map :features row-major-dataset)
-                                 object-array)
-                            ^ints
-                            (->> (map (comp int #(dtype/get-value % 0) :label) row-major-dataset)
-                                 int-array))))
-    ;;its trained now
-    untrained))
-
-
-(defn- train-block
-  "Train by downloading all the data into a fixed matrix."
-  [options entry-metadata row-major-dataset]
-  (let [value-seq (->> row-major-dataset
-                       (map :features))
-        [x-data x-datatype] (if (contains? (:attributes entry-metadata)
-                                           :object-data)
-                              [(object-array value-seq) :object-array]
-                              [(into-array value-seq) :float64-array-array])
-
-        n-entries (first (dtype/shape x-data))
-        ^ints y-data (first (dtype/copy-raw->item!
-                             (map :label row-major-dataset)
-                             (dtype/make-array-of-type :int32 n-entries)
-                             0))
-        data-constructor-arguments [{:type x-datatype
-                                     :default x-data
-                                     :name :training-data}
-                                    {:type :int32-array
-                                     :default y-data
-                                     :name :labels}]]
-    (-> (utils/prepend-data-constructor-arguments entry-metadata options
-                                                  data-constructor-arguments)
-        (utils/construct package-name options))))
 
 
 (defrecord SmileClassification []
@@ -323,32 +284,27 @@
   (train [system options dataset]
     (let [entry-metadata (model-type->classification-model
                           (model/options->model-type options))
-          row-major-dataset (dataset/->row-major dataset options)]
-      (-> (if (contains? (:attributes entry-metadata) :online)
-            (train-online options entry-metadata row-major-dataset)
-            (train-block options entry-metadata row-major-dataset))
-          model/model->byte-array)))
+          target-colname (:target options)
+          formula (Formula. (ml-util/->str target-colname))
+          dataset (if (casting/integer-type? (dtype/get-datatype
+                                              (dataset target-colname)))
+                    dataset
+                    (ds/column-cast dataset target-colname :int32))
+          data (ds/dataset->smile-dataframe dataset)
+          properties (smile-proto/options->properties entry-metadata dataset options)
+          ctor (:constructor entry-metadata)
+          model (ctor formula data properties)]
+      (model/model->byte-array model)))
   (thaw-model [system model]
     (model/byte-array->model model))
   (predict [system options thawed-model dataset]
-    (let [row-major-dataset (dataset/->row-major dataset options)
-          trained-model thawed-model
-          inverse-label-map (ds-options/inference-target-label-inverse-map options)
-          ordered-labels (->> inverse-label-map
-                              (sort-by first)
-                              (mapv second))]
-      (if (instance? SoftClassifier trained-model)
-        (let [probabilities (double-array (count ordered-labels))
-              ^SoftClassifier trained-model trained-model]
-          (->> row-major-dataset
-               (map (fn [{:keys [:features]}]
-                      (.predict trained-model ^doubles features probabilities)
-                      (zipmap ordered-labels probabilities)))))
-        (let [^Classifier trained-model trained-model]
-          (->> row-major-dataset
-               (map (fn [{:keys [:features]}]
-                      (let [prediction (.predict trained-model ^doubles features)]
-                        {(get ordered-labels prediction) 1.0})))))))))
+    (let [entry-metadata (model-type->classification-model
+                          (model/options->model-type options))
+          target-colname (:target options)
+          n-labels (-> (get-in options [:label-map target-colname])
+                       count)
+          predictor (:predictor entry-metadata)]
+      (predictor thawed-model dataset options n-labels))))
 
 
 

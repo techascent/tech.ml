@@ -27,7 +27,6 @@
   (verify-reg/basic-regression {:model-type :smile.regression/elastic-net
                                 :accuracy 2}))
 
-
 (deftest elastic-net-gridsearch
   (verify-reg/auto-gridsearch-simple {:model-type :smile.regression/elastic-net}))
 

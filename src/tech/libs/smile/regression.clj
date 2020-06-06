@@ -11,6 +11,7 @@
             [tech.libs.smile.protocols :as smile-proto])
   (:import [smile.regression
             Regression
+            DataFrameRegression
             GradientTreeBoost
             RandomForest
             ;; NeuralNetwork$ActivationFunction
@@ -63,19 +64,6 @@
          (dtype/make-container :java-array :float64))))
 
 
-(extend-type GradientTreeBoost
-  smile-proto/PToFormula
-  (get-model-formula [model]
-    (.formula model)))
-
-
-(extend-type RandomForest
-  smile-proto/PToFormula
-  (get-model-formula [model]
-    (.formula model)))
-
-
-;;Currently failing for the gradient boosted trees
 (defn- predict-tuple
   [^Regression thawed-model ds options]
   (let [df (ds/dataset->smile-dataframe ds)]
@@ -87,6 +75,13 @@
          (dtype/make-container :java-array :float64))))
 
 
+(defn- predict-df
+  [^DataFrameRegression thawed-model ds options]
+  (let [df (ds/dataset->smile-dataframe ds)]
+    (smile-proto/initialize-model-formula! thawed-model options)
+    (.predict thawed-model df)))
+
+
 (def regression-metadata
   {:elastic-net {:options [{:name :lambda1
                             :type :float64
@@ -96,14 +91,17 @@
                             :type :float64
                             :default 0.1
                             :range :>0}
+
                            {:name :tolerance
                             :type :float64
                             :default 1e-4
                             :range :>0}
+
                            {:name :max-iterations
                             :type :int32
                             :default (int 1000)
-                            :range :>0}]
+                            :range :>0}
+                           ]
                  :gridsearch-options {:lambda1 (ml-gs/exp [1e-2 1e2])
                                       :lambda2 (ml-gs/exp [1e-4 1e2])
                                       :tolerance (ml-gs/exp [1e-6 1e-2])
@@ -179,29 +177,37 @@
     :constructor #(GradientTreeBoost/fit %1 %2 %3)
     :predictor predict-tuple}
    :random-forest
-   {:options [{:name :trees
+   {:options [
+              {:name :trees
                :type :int32
                :default 500
                :range :>0}
+
               {:name :max-depth
                :type :int32
                :default 20
                :range :>0}
+
               {:name :max-nodes
                :type :int32
                :default #(unchecked-int (max 5 (/ (ds/row-count %) 5)))
                :range :>0}
+
               {:name :node-size
                :type :int32
                :default 5
                :range :>0}
+
               {:name :sample-rate
                :type :float64
                :default 1.0
-               :range [0.0 1.0]}]
+               :range [0.0 1.0]}
+
+              ]
     :property-name-stem "smile.random.forest"
     :constructor #(RandomForest/fit %1 %2 %3)
-    :predictor predict-tuple}})
+    :predictor predict-tuple}
+   })
 
 
 (defmulti model-type->regression-model
@@ -213,7 +219,7 @@
   [model-type]
   (if-let [retval (get regression-metadata model-type)]
     retval
-    (throw (ex-info "Failed to get regression type"
+    (throw (ex-info "Failed to find regression model"
                     {:model-type model-type}))))
 
 
@@ -221,27 +227,6 @@
   [model-type]
   (get regression-metadata :elastic-net))
 
-
-(defn- resolve-default
-  [item dataset]
-  (if (fn? item)
-    (item dataset)
-    item))
-
-(defn options->properties
-  ^Properties [metadata dataset options]
-  (let [pname-stem (:property-name-stem metadata)]
-    (->> (:options metadata)
-         (reduce (fn [^Properties props {:keys [name default]}]
-                   (.put props (format "%s.%s"
-                                       pname-stem
-                                       (.replace ^String (clojure.core/name name)
-                                                 "-" "."))
-                         (str (dtype/cast (or (get options name)
-                                              (resolve-default default dataset))
-                                          (dtype/get-datatype default))))
-                   props)
-                 (Properties.)))))
 
 
 (defrecord SmileRegression []
@@ -263,7 +248,7 @@
               (throw (Exception. "Dataset has none or too many target columns.")))
           formula (Formula. (ml-util/->str (:name (first target-colnames))))
           data (ds/dataset->smile-dataframe dataset)
-          properties (options->properties entry-metadata dataset options)
+          properties (smile-proto/options->properties entry-metadata dataset options)
           ctor (:constructor entry-metadata)
           model (ctor formula data properties)]
       (model/model->byte-array model)))
