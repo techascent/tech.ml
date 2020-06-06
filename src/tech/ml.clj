@@ -59,15 +59,30 @@
      ;;We expect the users to serialize the options map so we want to save
      ;;enough relevant details of the dataset into the map that some portion of the
      ;;training process is accurately captured.
-     (let [options (assoc options
+     (let [label-map (ds/dataset-label-map dataset)
+           categorical-label-columns (->> (ds/select-columns dataset label-columns)
+                                          (filter #(:categorical? (meta %))))
+           ;;All categorical target columns have to have a map from value to index.
+           label-map (->> categorical-label-columns
+                          (map (fn [col]
+                                 (let [cname (:name (meta col))]
+                                   [cname
+                                    (if (label-map cname)
+                                      (label-map cname)
+                                      (->> (map-indexed #(vector %2 %1)
+                                                        (ds-col/unique col))
+                                           (into {})))])))
+                          (into {}))
+           options (assoc options
                           :dataset-shape (dtype/shape dataset)
                           :feature-columns feature-columns
                           :label-columns label-columns
-                          :label-map (ds/dataset-label-map dataset)
+                          :label-map label-map
                           :column-map (->> (ds/columns dataset)
                                            (map (comp (juxt :name identity)
                                                       ds-col/metadata))
                                            (into {})))
+
            ml-system (registry/system (:model-type options))
            model (system-proto/train ml-system options (ds/->dataset dataset {}))]
        {:model model
