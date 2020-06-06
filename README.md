@@ -4,11 +4,6 @@
 
 Library to encapsulate a few core concepts of techascent system.
 
-## Updates
-**Breaking Change:** This library expects tech.ml.dataset to be provided.  So your project
-needs both this library and `[tech.ml.dataset "2.0-beta-49"]`.  This is to reduce the
-number of spurious releases.
-
 
 * Smile now supports elasticnet in main distribution.  Use `{:model-type :smile.regression/elasticnet}` in your options.
 * xgboost per-round error metrics and early stopping are now supported.  Check out our xgboost [metrics walkthrough](https://github.com/techascent/tech.ml/blob/master/docs/xgboost_metrics.md).
