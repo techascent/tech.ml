@@ -30,7 +30,7 @@
 
 
 (def classifier-metadata
-  {:ada-boost {:name :ada-boosts
+  {:ada-boost {:name :ada-boost
                :options [{:name :trees
                           :type :int32
                           :default 500}

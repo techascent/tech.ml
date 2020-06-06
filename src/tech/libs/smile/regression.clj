@@ -75,6 +75,8 @@
          (dtype/make-container :java-array :float64))))
 
 
+;;This currently fails because of smile issue
+;;https://github.com/haifengl/smile/issues/554
 (defn- predict-df
   [^DataFrameRegression thawed-model ds options]
   (let [df (ds/dataset->smile-dataframe ds)]
@@ -100,8 +102,7 @@
                            {:name :max-iterations
                             :type :int32
                             :default (int 1000)
-                            :range :>0}
-                           ]
+                            :range :>0}]
                  :gridsearch-options {:lambda1 (ml-gs/exp [1e-2 1e2])
                                       :lambda2 (ml-gs/exp [1e-4 1e2])
                                       :tolerance (ml-gs/exp [1e-6 1e-2])
