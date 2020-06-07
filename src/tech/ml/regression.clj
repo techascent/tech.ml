@@ -8,20 +8,10 @@
             [clojure.tools.logging :as log]))
 
 
-(def libsvm-regression-models
-  (delay (try
-           (require '[tech.libs.svm])
-           [:libsvm/regression]
-           (catch Throwable e
-             (log/warnf "Unable to load libsvm: %s" e)
-             []))))
-
-
 (def smile-regression-models
   (delay (try
            (require '[tech.libs.smile.regression])
-           [:smile.regression/ridge
-            :smile.regression/lasso]
+           [:smile.regression/elastic-net]
            (catch Throwable e
              (log/warnf "Unable to load smile: %s" e)
              []))))
@@ -38,8 +28,7 @@
 
 (defn default-gridsearch-models
   []
-  (->> (concat @libsvm-regression-models
-               @smile-regression-models
+  (->> (concat @smile-regression-models
                @xgboost-regression-models)))
 
 

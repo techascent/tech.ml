@@ -5,14 +5,18 @@
             [tech.ml.dataset.column :as ds-col]
             [tech.ml.dataset.pipeline.column-filters :as cf]
             [tech.ml.gridsearch :as ml-gs]
+            [tech.ml.util :as ml-util]
             [tech.parallel :as parallel]
             [tech.v2.datatype :as dtype]
             [tech.v2.datatype.casting :as casting]
+            [tech.v2.datatype.typecast :as typecast]
             [tech.v2.datatype.functional :as dfn]
+            [tech.v2.datatype.builtin-op-providers :as builtin-op-providers]
             [tech.ml.utils :as utils]
             [clojure.tools.logging :as log]
             [clojure.set :as c-set]
-            [clojure.pprint :as pp])
+            [clojure.pprint :as pp]
+            [tech.ml.dataset.options :as ds-options])
   (:import [java.util UUID]))
 
 
@@ -55,15 +59,30 @@
      ;;We expect the users to serialize the options map so we want to save
      ;;enough relevant details of the dataset into the map that some portion of the
      ;;training process is accurately captured.
-     (let [options (assoc options
+     (let [label-map (ds/dataset-label-map dataset)
+           categorical-label-columns (->> (ds/select-columns dataset label-columns)
+                                          (filter #(:categorical? (meta %))))
+           ;;All categorical target columns have to have a map from value to index.
+           label-map (->> categorical-label-columns
+                          (map (fn [col]
+                                 (let [cname (:name (meta col))]
+                                   [cname
+                                    (if (label-map cname)
+                                      (label-map cname)
+                                      (->> (map-indexed #(vector %2 %1)
+                                                        (ds-col/unique col))
+                                           (into {})))])))
+                          (into {}))
+           options (assoc options
                           :dataset-shape (dtype/shape dataset)
                           :feature-columns feature-columns
                           :label-columns label-columns
-                          :label-map (ds/dataset-label-map dataset)
+                          :label-map label-map
                           :column-map (->> (ds/columns dataset)
                                            (map (comp (juxt :name identity)
                                                       ds-col/metadata))
                                            (into {})))
+
            ml-system (registry/system (:model-type options))
            model (system-proto/train ml-system options (ds/->dataset dataset {}))]
        {:model model
@@ -98,7 +117,7 @@
       (dissoc :model)))
 
 
-(defn predict
+(defn predict->dataset
   "Generate a sequence of predictions (inferences) from a training result.
 
   If classification, returns a sequence of probability distributions if possible.  If
@@ -111,7 +130,7 @@
             (throw (ex-info "Feature columns are missing" train-result)))
         ;;Order columns identical to training and remove anything else.
         ;;The select implicitly checks that the columns exist.
-
+        src-ds dataset
         dataset (-> (ds/select (ds/->dataset dataset)
                                feature-columns :all)
                     (ds/update-columns
@@ -120,12 +139,102 @@
                                                     :column-type
                                                     :feature))))]
     ;;If this isn't true you are in trouble
-    (assert (= (set feature-columns)
-               (set (cf/feature? dataset))))
     (let [ml-system (registry/system (:model-type options))
           thawed-model (-> (thaw-model train-result)
-                           :thawed-model)]
-      (system-proto/predict ml-system options thawed-model dataset))))
+                           :thawed-model)
+          predictions
+          (system-proto/predict ml-system options thawed-model dataset)]
+      (if (= (dtype/get-datatype predictions) :posterior-probabilities)
+        (let [label-map (ds-options/inference-target-label-map options)
+              inverse-label-map (c-set/map-invert label-map)
+              ordered-labels (->> inverse-label-map
+                                  (sort-by first)
+                                  (mapv second))
+              label-dtype (reduce builtin-op-providers/widest-datatype
+                                  (map dtype/get-datatype ordered-labels))
+              pred-rdr (dtype/->reader predictions)
+              n-labels (count ordered-labels)
+              pred-vals (cond
+                          (< n-labels Byte/MAX_VALUE)
+                          (dtype/make-reader
+                           :int8
+                           (ds/row-count dataset)
+                           (unchecked-byte (-> (pred-rdr idx)
+                                               (ml-util/max-idx))))
+                          (< n-labels Short/MAX_VALUE)
+                          (dtype/make-reader
+                           :int16
+                           (ds/row-count dataset)
+                           (unchecked-byte (-> (pred-rdr idx)
+                                               (ml-util/max-idx))))
+                          (< n-labels Integer/MAX_VALUE)
+                          (dtype/make-reader
+                           :int32
+                           (ds/row-count dataset)
+                           (unchecked-byte (-> (pred-rdr idx)
+                                               (ml-util/max-idx))))
+                          :else
+                          (dtype/make-reader
+                           :int64
+                           (ds/row-count dataset)
+                           (unchecked-byte (-> (pred-rdr idx)
+                                               (ml-util/max-idx)))))
+              ds (ds/assoc src-ds :prediction (ds-col/new-column
+                                               :prediction (dtype/clone pred-vals)
+                                               {:label-map label-map}))
+              posterior-colnames (->> ordered-labels
+                                      (mapv #(keyword (format "prediction.%s"
+                                                              (ml-util/->str %)))))]
+          (->> (range (count ordered-labels))
+               (reduce (fn [ds col-num]
+                         (let [cname (posterior-colnames col-num)]
+                           (ds/assoc ds cname
+                                     (-> (dtype/make-reader
+                                          :float64
+                                          (ds/row-count dataset)
+                                          (double
+                                           (ml-util/item-at (pred-rdr idx)
+                                                            col-num)))
+                                         (dtype/clone)))))
+                       (vary-meta ds assoc
+                                  :posterior-column-names
+                                  (->> (map vector posterior-colnames ordered-labels)
+                                       (into {}))))))
+        ;;Force computations that may be lazy.
+        (let [predictions (if (dtype/->array predictions)
+                            predictions
+                            (dtype/make-container :java-array
+                                                  (dtype/get-datatype predictions)
+                                                  predictions))
+              target-cols (ds/inference-target-column-names src-ds)
+              retval (ds/assoc src-ds :prediction predictions)]
+          ;;If the answers were passed in then (lazily) calculate the residuals
+          (if (= 1 (count target-cols))
+            (ds/assoc retval :residual (dfn/- (ds/column src-ds
+                                                         (first target-cols))
+                                              predictions))
+            retval))))))
+
+
+(defn dataset->posterior-maps
+  [ds]
+  (if-let [cnames (:posterior-column-names (meta ds))]
+    (-> (ds/select-columns ds cnames)
+        (ds/mapseq-reader))
+    (throw (Exception. "Dataset does not have posterior column names"))))
+
+
+(defn predict
+  "Backwards compatible wrapper around predict->dataset.
+  Please see documentation for predict->dataset.
+
+  For regression, returns a float64 reader
+  For classification, returns a list of posterior distributions"
+  [model dataset]
+  (let [pred-ds (predict->dataset model dataset)]
+    (if (:posterior-column-names (meta pred-ds))
+      (dataset->posterior-maps pred-ds)
+      (pred-ds :prediction))))
 
 
 (defn explain-model
@@ -147,8 +256,8 @@
               (let [{model :retval
                      train-time :milliseconds}
                     (utils/time-section (train options train-ds))]
-                (-> (merge (assoc model :train-time train-time)
-                           (dissoc dataset-entry :train-ds))))))))
+                (merge (assoc model :train-time train-time)
+                       (dissoc dataset-entry :train-ds)))))))
 
 
 (defn average-prediction-error
@@ -193,7 +302,9 @@
 ;;The gridsearch error reporter is called when there is an error during gridsearch.
 ;;It is called like so:
 ;;(*gridsearch-error-reporter options-map error)
-(def ^:dynamic *gridsearch-error-reporter* nil)
+(def ^:dynamic *gridsearch-error-reporter* #(log/warn %2 (with-out-str
+                                                           (clojure.pprint/pprint
+                                                            %1))))
 
 
 (defn gridsearch

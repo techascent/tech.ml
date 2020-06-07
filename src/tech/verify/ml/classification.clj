@@ -62,7 +62,6 @@
         model (ml/train options train-ds)
         test-output (ml/predict model test-ds)
         labels (ds/labels test-ds)]
-
     ;;Accuracy gets *better* as it increases.  This is the opposite of a loss!!
     (is (> (loss/classification-accuracy test-output labels)
            (or (:classification-accuracy options)
