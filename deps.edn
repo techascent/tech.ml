@@ -2,6 +2,9 @@
  :deps {org.clojure/clojure              {:mvn/version "1.10.1"}
         techascent/tech.jna              {:mvn/version "3.23"
                                           :exclusions [org.ow2.asm/asm]}
+        ;;Ensure we have an up-to-date version of asm lib.  xgboost pulls in a very old
+        ;;version and this breaks asm generation used in tech.datatype.
+        org.ow2.asm/asm                  {:mvn/version "7.1"}
         ml.dmlc/xgboost4j                {:mvn/version "0.90"
                                           :exclusions [org.scala-lang/scala-library
                                                        org.scala-lang/scala-compiler
