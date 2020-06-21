@@ -229,7 +229,6 @@
   (get regression-metadata :elastic-net))
 
 
-
 (defrecord SmileRegression []
   ml-proto/PMLSystem
   (system-name [_] :smile.regression)
@@ -262,17 +261,10 @@
       (predictor thawed-model dataset options))))
 
 
-(defn get-field
-  [obj fname]
-  (let [field (doto (.getDeclaredField (.getClass ^Object obj) fname)
-                (.setAccessible true))]
-    (.get field obj)))
-
-
 (defn explain-linear-model
-  [model {:keys [feature-columns]}]
-  (let [weights (get-field model "w")
-        bias (get-field model "b")]
+  [^LinearModel model {:keys [feature-columns]}]
+  (let [weights (.coefficients model)
+        bias (.intercept model)]
     {:bias bias
      :coefficients (->> (map vector
                              feature-columns
@@ -281,13 +273,7 @@
 
 
 (extend-protocol ml-proto/PInternalMLModelExplain
-  LASSO
-  (model-explain-model [model options]
-    (explain-linear-model model options))
-  RidgeRegression
-  (model-explain-model [model options]
-    (explain-linear-model model options))
-  ElasticNet
+  LinearModel
   (model-explain-model [model options]
     (explain-linear-model model options)))
 
