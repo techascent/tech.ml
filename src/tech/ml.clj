@@ -61,6 +61,7 @@
      ;;training process is accurately captured.
      (let [label-map (ds/dataset-label-map dataset)
            categorical-label-columns (->> (ds/select-columns dataset label-columns)
+                                          (ds/columns)
                                           (filter #(:categorical? (meta %))))
            ;;All categorical target columns have to have a map from value to index.
            label-map (->> categorical-label-columns

@@ -1,4 +1,8 @@
-(ns tech.ml.protocols.system)
+(ns tech.ml.protocols.system
+  (:require [tech.v2.datatype.casting :as casting]))
+
+
+(casting/alias-datatype! :posterior-probabilities :object)
 
 
 (defprotocol PMLSystem

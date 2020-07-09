@@ -242,7 +242,7 @@
   (train [system options dataset]
     (let [entry-metadata (model-type->regression-model
                           (model/options->model-type options))
-          target-colnames (->> (map meta dataset)
+          target-colnames (->> (map meta (ds/columns dataset))
                                (filter #(= :inference (:column-type %))))
           _ (when-not (= 1 (count target-colnames))
               (throw (Exception. "Dataset has none or too many target columns.")))
