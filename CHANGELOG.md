@@ -1,4 +1,7 @@
 # ConstantChangeLog
+## 3.00
+ * Upgrade to smile 2.5.0.
+ * Minimum workingtech.ml.dataset version is 4.00
 
 ## 2.0-beta-56
 
