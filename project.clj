@@ -7,4 +7,5 @@
   :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
   :dependencies [[techascent/tech.ml.dataset "3.01" :scope "provided"]]
   :lein-tools-deps/config {:config-files [:install :user :project]}
-  :profiles {:dev {:lein-tools-deps/config {:resolve-aliases [:test]}}})
+  :profiles {:dev {:lein-tools-deps/config {:resolve-aliases [:test]}}}
+  :java-source-paths ["java"])

@@ -5,7 +5,8 @@
            [smile.data.type StructType]
            [smile.regression DataFrameRegression]
            [smile.classification DataFrameClassifier]
-           [java.util Properties List]))
+           [java.util Properties List]
+           [smile.data.formula Formula TechFactory Variable]))
 
 
 (set! *warn-on-reflection* true)
@@ -62,3 +63,12 @@
                                           (dtype/get-datatype default))))
                    props)
                  (Properties.)))))
+
+
+(defn make-formula
+  "Make a formula out of a response name and a sequence of feature names"
+  [^String response & [features]]
+  (Formula. (TechFactory/variable response)
+            ^"[Lsmile.data.formula.Variable;" (->> features
+                                                   (map #(TechFactory/variable %))
+                                                   (into-array Variable ))))

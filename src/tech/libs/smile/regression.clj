@@ -21,7 +21,7 @@
             LinearModel
             ;; OnlineRegression
             ]
-           [smile.data.formula Formula]
+           [smile.data.formula Formula TechFactory Variable]
            [smile.data DataFrame]
            [java.lang.reflect Field]
            [java.util Properties List]))
@@ -64,6 +64,7 @@
          (dtype/make-container :java-array :float64))))
 
 
+;;Legacy method, keeping around for just a release.
 (defn- predict-tuple
   [^Regression thawed-model ds options]
   (let [df (ds/dataset->smile-dataframe ds)]
@@ -75,8 +76,6 @@
          (dtype/make-container :java-array :float64))))
 
 
-;;This currently fails because of smile issue
-;;https://github.com/haifengl/smile/issues/554
 (defn- predict-df
   [^DataFrameRegression thawed-model ds options]
   (let [df (ds/dataset->smile-dataframe ds)]
@@ -176,7 +175,7 @@
                :range [0.0 1.0]}]
     :property-name-stem "smile.bgt.trees"
     :constructor #(GradientTreeBoost/fit %1 %2 %3)
-    :predictor predict-tuple}
+    :predictor predict-df}
    :random-forest
    {:options [
               {:name :trees
@@ -207,7 +206,7 @@
               ]
     :property-name-stem "smile.random.forest"
     :constructor #(RandomForest/fit %1 %2 %3)
-    :predictor predict-tuple}
+    :predictor predict-df}
    })
 
 
@@ -244,9 +243,13 @@
                           (model/options->model-type options))
           target-colnames (->> (map meta (ds/columns dataset))
                                (filter #(= :inference (:column-type %))))
+          feature-colnames (->> (map meta (ds/columns dataset))
+                                (remove #(= :inference (:column-type %))))
           _ (when-not (= 1 (count target-colnames))
               (throw (Exception. "Dataset has none or too many target columns.")))
-          formula (Formula. (ml-util/->str (:name (first target-colnames))))
+          formula (smile-proto/make-formula
+                   (ml-util/->str (:name (first target-colnames)))
+                   (map (comp ml-util/->str :name)  feature-colnames))
           data (ds/dataset->smile-dataframe dataset)
           properties (smile-proto/options->properties entry-metadata dataset options)
           ctor (:constructor entry-metadata)

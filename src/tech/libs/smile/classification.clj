@@ -9,8 +9,10 @@
             [tech.ml.util :as ml-util]
             [tech.ml.dataset.options :as ds-options]
             [tech.libs.smile.protocols :as smile-proto])
-  (:import [smile.classification SoftClassifier AdaBoost]
-           [smile.data.formula Formula]))
+  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression]
+           [smile.data.formula Formula]
+           [smile.data DataFrame]
+           [java.util Properties List]))
 
 
 (set! *warn-on-reflection* true)
@@ -28,26 +30,67 @@
             posterior))
          (dtype/make-container :typed-buffer :posterior-probabilities))))
 
+(defn tuple-predict-posterior
+  [^SoftClassifier model ds options n-labels]
+  (let [df (ds/dataset->smile-dataframe ds)]
+    (smile-proto/initialize-model-formula! model options)
+    (->> (dtype/make-reader
+          :posterior-probabilities
+          (ds/row-count ds)
+          (let [posterior (double-array n-labels)]
+            (.predict model (.get df idx) posterior)
+            posterior))
+         (dtype/make-container :typed-buffer :posterior-probabilities))))
+
+
+(defn double-array-predict-posterior
+  [^SoftClassifier model ds options n-labels]
+  (let [value-reader (ds/value-reader ds)]
+    (->> (dtype/make-reader
+          :posterior-probabilities
+          (ds/row-count ds)
+          (let [posterior (double-array n-labels)]
+            (.predict model (double-array (value-reader idx)) posterior)
+            posterior))
+         (dtype/make-container :typed-buffer :posterior-probabilities))))
+
 
 (def classifier-metadata
-  {:ada-boost {:name :ada-boost
-               :options [{:name :trees
-                          :type :int32
-                          :default 500}
-                         {:name :max-depth
-                          :type :int32
-                          :default 200}
-                         {:name :max-nodes
-                          :type :int32
-                          :default 6}
-                         {:name :node-size
-                          :type :int32
-                          :default 1}]
-               :gridsearch-options {:trees (ml-gs/linear-long [2 500])
-                                    :max-nodes (ml-gs/linear-long [4 1000])}
-               :property-name-stem "smile.databoost"
-               :constructor #(AdaBoost/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
-               :predictor tuple-predict-posterior}
+  {:ada-boost
+   {:name :ada-boost
+    :options [{:name :trees
+               :type :int32
+               :default 500}
+              {:name :max-depth
+               :type :int32
+               :default 200}
+              {:name :max-nodes
+               :type :int32
+               :default 6}
+              {:name :node-size
+               :type :int32
+               :default 1}]
+    :gridsearch-options {:trees (ml-gs/linear-long [2 500])
+                         :max-nodes (ml-gs/linear-long [4 1000])}
+    :property-name-stem "smile.databoost"
+    :constructor #(AdaBoost/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
+    :predictor tuple-predict-posterior}
+   :logistic-regression
+   {:name :logistic-regression
+    :options [{:name :lambda
+               :type :float64
+               :default 0.1}
+              {:name :tolerance
+               :type :float64
+               :default 1e-5}
+              {:name :max-iter
+               :type :int32
+               :default 500}]
+    :gridsearch-options {:lambda (ml-gs/exp [1e-3 1e2])
+                         :tolerance (ml-gs/linear [1e-9 1e-1])
+                         :max-iter (ml-gs/linear-long [1e2 1e4])}
+    :constructor #(LogisticRegression/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
+    :predictor double-array-predict-posterior}
 
    ;; :decision-tree {:attributes #{:probabilities :attributes}
    ;;                 :class-name "DecisionTree"
@@ -106,22 +149,7 @@
    ;;                  :type :int32
    ;;                  :default 5}]
    ;;       :gridsearch-options {:num-clusters (ml-gs/linear-long [2 100])}}
-   ;; :logistic-regression {:attributes #{:probabilities}
-   ;;                       :class-name "LogisticRegression"
-   ;;                       :datatypes #{:float64-array}
-   ;;                       :name :logistic-regression
-   ;;                       :options [{:name :lambda
-   ;;                                  :type :float64
-   ;;                                  :default 0.1}
-   ;;                                 {:name :tolerance
-   ;;                                  :type :float64
-   ;;                                  :default 1e-5}
-   ;;                                 {:name :max-iter
-   ;;                                  :type :int32
-   ;;                                  :default 500}]
-   ;;                       :gridsearch-options {:lambda (ml-gs/exp [1e-3 1e2])
-   ;;                                            :tolerance (ml-gs/linear [1e-9 1e-1])
-   ;;                                            :max-iter (ml-gs/linear-long [1e2 1e4])}}
+   ;;
    ;; ;;Not supported at this time because constructor patter is unique
    ;; :maxent {:attributes #{:probabilities}
    ;;          :class-name "Maxent"
@@ -285,7 +313,11 @@
     (let [entry-metadata (model-type->classification-model
                           (model/options->model-type options))
           target-colname (:target options)
-          formula (Formula. (ml-util/->str target-colname))
+          feature-colnames (->> (map meta (ds/columns dataset))
+                                (remove #(= :inference (:column-type %)))
+                                (map (comp ml-util/->str :name)))
+          formula (smile-proto/make-formula (ml-util/->str target-colname)
+                                            feature-colnames)
           dataset (if (casting/integer-type? (dtype/get-datatype
                                               (dataset target-colname)))
                     dataset

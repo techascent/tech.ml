@@ -17,6 +17,18 @@
   (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/ada-boost}))
 
 
+(deftest logistic-regression
+  (verify-cls/classify-fruit {:model-type :smile.classification/logistic-regression
+                              :classification-accuracy 0.5}))
+
+
+(deftest logistic-regression-gridsearch
+  (verify-cls/auto-gridsearch-fruit
+   {:model-type :smile.classification/logistic-regression
+    :classification-loss 0.40}))
+
+
+
 ;; (deftest fld
 ;;   (verify-cls/classify-fruit {:model-type :smile.classification/fld
 ;;                               :classification-accuracy 0.4}))
@@ -84,17 +96,6 @@
 
 ;; (deftest rda-gridsearch
 ;;   (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/regularized-discriminant-analysis}))
-
-
-;; (deftest logistic-regression
-;;   (verify-cls/classify-fruit {:model-type :smile.classification/logistic-regression
-;;                               :classification-accuracy 0.5}))
-
-
-;; (deftest logistic-regression-gridsearch
-;;   (verify-cls/auto-gridsearch-fruit {:model-type :smile.classification/logistic-regression
-;;                                      :classification-loss 0.30}))
-
 
 ;; ;;Default naive-bayes completely fails.
 ;; (deftest naive-bayes

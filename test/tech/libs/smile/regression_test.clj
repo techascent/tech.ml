@@ -35,7 +35,6 @@
   (verify-reg/basic-regression {:model-type :smile.regression/gradient-tree-boost
                                 :accuracy 1.2}))
 
-
 (deftest regression-basic-random-forest
   (verify-reg/basic-regression {:model-type :smile.regression/random-forest
                                 :accuracy 2}))
