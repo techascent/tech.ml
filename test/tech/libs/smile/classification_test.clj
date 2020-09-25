@@ -1,7 +1,7 @@
 (ns tech.libs.smile.classification-test
   (:require [tech.verify.ml.classification :as verify-cls]
             [tech.libs.smile.classification]
-            [tech.ml.utils :as utils]
+            [tech.ml.dataset.utils :as utils]
             [clojure.test :refer :all])
   (:import [ch.qos.logback.classic Logger]
            [ch.qos.logback.classic Level]))

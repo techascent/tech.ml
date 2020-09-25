@@ -12,7 +12,7 @@
             [tech.v2.datatype.typecast :as typecast]
             [tech.v2.datatype.functional :as dfn]
             [tech.v2.datatype.builtin-op-providers :as builtin-op-providers]
-            [tech.ml.utils :as utils]
+            [tech.ml.dataset.utils :as ds-utils]
             [clojure.tools.logging :as log]
             [clojure.set :as c-set]
             [clojure.pprint :as pp]
@@ -256,7 +256,7 @@
        (map (fn [{:keys [train-ds] :as dataset-entry}]
               (let [{model :retval
                      train-time :milliseconds}
-                    (utils/time-section (train options train-ds))]
+                    (ds-utils/time-section (train options train-ds))]
                 (merge (assoc model :train-time train-time)
                        (dissoc dataset-entry :train-ds)))))))
 
@@ -274,7 +274,7 @@
              (map (fn [{:keys [test-ds options model] :as train-result}]
                     (let [{predictions :retval
                            predict-time :milliseconds}
-                          (utils/time-section (predict train-result test-ds))
+                          (ds-utils/time-section (predict train-result test-ds))
                           labels (ds/labels test-ds)]
                       (merge (dissoc train-result :test-ds)
                              {:predict-time predict-time

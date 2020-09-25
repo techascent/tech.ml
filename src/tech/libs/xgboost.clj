@@ -3,7 +3,7 @@
             [tech.ml.model :as model]
             [tech.ml.protocols.system :as ml-proto]
             [tech.ml.registry :as ml-registry]
-            [tech.ml.utils :as utils]
+            [tech.ml.dataset.utils :as utils]
             [tech.ml.util :as ml-util]
             [tech.ml.gridsearch :as ml-gs]
             [clojure.string :as s]

@@ -1,7 +1,7 @@
 (ns tech.libs.smile.regression-test
   (:require [tech.verify.ml.regression :as verify-reg]
             [tech.libs.smile.regression]
-            [tech.ml.utils :as utils]
+            [tech.ml.dataset.utils :as utils]
             [clojure.test :refer :all]))
 
 (utils/set-slf4j-log-level :warn)
