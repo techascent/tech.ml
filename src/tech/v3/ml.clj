@@ -40,7 +40,7 @@
   {:model - direct result of system-proto/train
    :options - options used to train model
    :id - random UUID generated}"
-  ([options feature-columns label-columns dataset]
+  ([options feature-dataset label-dataset]
    (when-not (->> (ds/columns dataset)
                   (map dtype/get-datatype)
                   (every? casting/numeric-type?))
@@ -89,10 +89,10 @@
        {:model model
         :options options
         :id (UUID/randomUUID)})))
-  ([options dataset]
+  ([dataset options]
    (train options
-          (or (:feature-columns options) (cf/feature? dataset))
-          (or (:label-columns options) (cf/target? dataset))
+          (cf/feature dataset)
+          (cf/target dataset)
           dataset)))
 
 

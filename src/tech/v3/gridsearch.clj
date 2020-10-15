@@ -1,4 +1,4 @@
-(ns tech.ml.gridsearch
+(ns tech.v3.gridsearch
   "https://en.wikipedia.org/wiki/Sobol_sequence
   Used to gridsearch efficiently without getting fancy."
   (:require [clojure.set :as c-set])

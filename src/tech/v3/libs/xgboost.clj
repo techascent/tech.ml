@@ -173,19 +173,29 @@
     (str item)))
 
 
+(defn def-ml-model
+  [model-keyword train-fn predict-fn {:keys [hyper-parameter-map
+                                             thaw-fn
+                                             explain-fn]}]
+
+  )
+
+
 (defrecord XGBoostSystem []
   ml-proto/PMLSystem
   (system-name [_] :xgboost)
   (gridsearch-options [system options]
     ;;These are just a very small set of possible options:
     ;;https://xgboost.readthedocs.io/en/latest/parameter.html
-    {:subsample (ml-gs/linear [0.1 1.0])
+    {:subsample {:doc "blbalhbh"
+                 :gridsearch (ml-gs/linear [0.1 1.0])}
      :scale-pos-weight (ml-gs/linear [0.1 2.0])
      :max-depth (comp long (ml-gs/linear-long [2 50]))
      :lambda (ml-gs/linear [0.01 2])
      :gamma (ml-gs/exp [0.001 100])
      :eta (ml-gs/linear [0 1])
      :alpha (ml-gs/exp [0.01 2])})
+
   (train [_ options dataset]
     ;;XGBOOST is fully reentrant but it doesn't benefit from further explicit
     ;;parallelization.  Because of this, allowing xgboost to be 'pmapped'
