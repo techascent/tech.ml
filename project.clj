@@ -5,10 +5,7 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.10.2-alpha1"]
                  [techascent/tech.ml.dataset "5.00-alpha1"]
-                 [ml.dmlc/xgboost4j "0.90"
-                  :exclusions [org.scala-lang/scala-library
-                               org.scala-lang/scala-compiler
-                               org.scala-lang/scala-reflect]]]
+                 [ml.dmlc/xgboost4j "0.90"]]
   :profiles
   {:codox
    {:dependencies [[codox-theme-rdash "0.1.2"]]

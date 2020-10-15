@@ -2,14 +2,15 @@
   "Simple machine learning based on tech.v3.dataset functionality."
   (:require [tech.v3.datatype.errors :as errors]
             [tech.v3.dataset :as ds]
-            [tech.v3.dataset.column-filters :as cf])
+            [tech.v3.dataset.column-filters :as cf]
+            [tech.v3.dataset.categorical :as ds-cat])
   (:import [java.util UUID]))
 
 
 (defonce ^{:doc "Map of model kwd to model definition"} model-definitions* (atom nil))
 
 
-(defn define-model
+(defn define-model!
   "Create a model definition.  An ml model is a function that takes a dataset and an options map and
   returns a model.  A model is something that, combined with a dataset, produces a inferred
   dataset."
@@ -20,7 +21,12 @@
                                              :predict-fn predict-fn
                                              :hyperparameters hyperparameter-map
                                              :thaw-fn thaw-fn
-                                             :explain-fn explain-fn}))
+                                             :explain-fn explain-fn})
+  :ok)
+
+(defn model-definition-names
+  []
+  (keys @model-definitions*))
 
 
 (defn options->model-def
@@ -56,12 +62,19 @@
         _ (errors/when-not-error (> (ds/row-count target-ds) 0)
                                  "No target columns provided
 see tech.v3.dataset.modelling/set-inference-target")
-        model-data (train-fn feature-ds target-ds options)]
-    {:model-data model-data
-     :options options
-     :id (UUID/randomUUID)
-     :feature-columns (vec (ds/column-names feature-ds))
-     :target-columns (vec (ds/column-names target-ds))}))
+        model-data (train-fn feature-ds target-ds options)
+        cat-maps (->> (concat (ds-cat/dataset->categorical-maps target-ds)
+                              (ds-cat/dataset->one-hot-maps target-ds))
+                      (map (juxt :src-column identity))
+                      (into {}))]
+    (merge
+      {:model-data model-data
+       :options options
+       :id (UUID/randomUUID)
+       :feature-columns (vec (ds/column-names feature-ds))
+       :target-columns (vec (ds/column-names target-ds))}
+      (when-not (== 0 (count cat-maps))
+        {:target-categorical-maps cat-maps}))))
 
 
 (defn thaw-model
@@ -72,8 +85,8 @@ see tech.v3.dataset.modelling/set-inference-target")
   (if-let [cached-model (get model :thawed-model)]
     cached-model
     (if thaw-fn
-      (thaw-fn (get model :model))
-      (get model :model))))
+      (thaw-fn (get model :model-data))
+      (get model :model-data))))
 
 
 (defn predict
@@ -86,14 +99,16 @@ see tech.v3.dataset.modelling/set-inference-target")
   (let [{:keys [predict-fn] :as model-def} (options->model-def (:options model))
         feature-ds (ds/select-columns dataset (:feature-columns model))
         thawed-model (thaw-model model model-def)]
-    (predict-fn feature-ds thawed-model)))
+    (predict-fn feature-ds
+                thawed-model
+                model)))
 
 
 (defn explain
   "Explain (if possible) an ml model.  A model explanation is a model-specific map
   of data that usually indicates some level of mapping between features and importance"
-  [model]
+  [model & [options]]
   (let [{:keys [explain-fn] :as model-def}
         (options->model-def (:options model))]
     (when explain-fn
-      (explain-fn (thaw-model model model-def)))))
+      (explain-fn (thaw-model model model-def) model options))))
