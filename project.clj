@@ -1,10 +1,10 @@
-(defproject techascent/tech.ml "5.00-alpha1-SNAPSHOT"
+(defproject techascent/tech.ml "5.00-alpha-2-SNAPSHOT"
   :description "Basic machine learning toolkit"
   :url "http://github.com/techascent/tech.ml-base"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.10.2-alpha1"]
-                 [techascent/tech.ml.dataset "5.00-alpha1"]
+                 [techascent/tech.ml.dataset "5.00-alpha-2"]
                  [ml.dmlc/xgboost4j "0.90"]]
   :profiles
   {:codox

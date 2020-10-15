@@ -3,7 +3,7 @@
   (:require [tech.v3.datatype.errors :as errors]
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.column-filters :as cf]
-            [tech.v3.dataset.categorical :as ds-cat])
+            [tech.v3.dataset.modelling :as ds-mod])
   (:import [java.util UUID]))
 
 
@@ -63,10 +63,7 @@
                                  "No target columns provided
 see tech.v3.dataset.modelling/set-inference-target")
         model-data (train-fn feature-ds target-ds options)
-        cat-maps (->> (concat (ds-cat/dataset->categorical-maps target-ds)
-                              (ds-cat/dataset->one-hot-maps target-ds))
-                      (map (juxt :src-column identity))
-                      (into {}))]
+        cat-maps (ds-mod/dataset->categorical-xforms target-ds)]
     (merge
       {:model-data model-data
        :options options
@@ -98,10 +95,16 @@ see tech.v3.dataset.modelling/set-inference-target")
   [dataset model]
   (let [{:keys [predict-fn] :as model-def} (options->model-def (:options model))
         feature-ds (ds/select-columns dataset (:feature-columns model))
-        thawed-model (thaw-model model model-def)]
-    (predict-fn feature-ds
-                thawed-model
-                model)))
+        label-columns (:target-columns model)
+        thawed-model (thaw-model model model-def)
+        pred-ds (-> (predict-fn feature-ds
+                                thawed-model
+                                model)
+                    (ds/update-columnwise :all
+                                          vary-meta assoc :column-type :prediction))]
+    (if (= :classification (:model-type (meta pred-ds)))
+      (ds-mod/probability-distributions->label-column pred-ds (first label-columns))
+      pred-ds)))
 
 
 (defn explain

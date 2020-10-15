@@ -1,5 +1,9 @@
-(ns tech.ml.loss
-  (:require [tech.v2.datatype.functional :as dfn]))
+(ns tech.v3.ml.loss
+  "Simple loss functions."
+  (:require [tech.v3.datatype.functional :as dfn]
+            [tech.v3.datatype :as dtype]
+            [tech.v3.datatype.errors :as errors]
+            [tech.v3.datatype.argops :as argops]))
 
 (defn mse
   "mean squared error"
@@ -38,19 +42,18 @@ Model output is a sequence of probability distributions.
 label-seq is a sequence of values.  The answer is considered correct
 if the key highest probability in the model output entry matches
 that label."
-  ^double [model-output label-seq]
-  (let [num-items (count model-output)
-        num-correct (->> model-output
-                         (map #(apply max-key % (keys %)))
-                         (map vector label-seq)
-                         (filter #(apply = %))
-                         count)]
-    (/ (double num-correct)
-       (double num-items))))
+  ^double [lhs rhs]
+  (errors/when-not-errorf
+   (= (dtype/ecount lhs)
+      (dtype/ecount rhs))
+   "Ecounts do not match: %d %d"
+   (dtype/ecount lhs) (dtype/ecount rhs))
+  (/ (dtype/ecount (argops/binary-argfilter :tech.numerics/eq lhs rhs))
+     (dtype/ecount lhs)))
 
 
 (defn classification-loss
   "1.0 - classification-accuracy."
-  ^double [model-output label-seq]
+  ^double [lhs rhs]
   (- 1.0
-     (classification-accuracy model-output label-seq)))
+     (classification-accuracy lhs rhs)))

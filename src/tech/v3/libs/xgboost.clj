@@ -241,10 +241,12 @@ c/xgboost4j/java/XGBoost.java#L208"))
                         (ds-tens/tensor->dataset))
         target-cname (first target-columns)]
     (if (multiclass-objective? (options->objective options))
-      (ds/rename-columns predict-ds (-> (get-in target-categorical-maps
-                                                [target-cname :lookup-table])
-                                        (set/map-invert)))
-      (ds/rename-columns predict-ds {0 target-cname}))))
+      (-> (ds/rename-columns predict-ds (-> (get-in target-categorical-maps
+                                                    [target-cname :lookup-table])
+                                            (set/map-invert)))
+          (vary-meta assoc :model-type :classification))
+      (-> (ds/rename-columns predict-ds {0 target-cname})
+          (vary-meta assoc :model-type :regression)))))
 
 
 (defn- explain
@@ -284,12 +286,16 @@ c/xgboost4j/java/XGBoost.java#L208"))
 
 (comment
   (require '[tech.v3.dataset.column-filters :as cf])
-  (def ds (->  (ds/->dataset "test/data/iris.csv")
+  (def src-ds (ds/->dataset "test/data/iris.csv"))
+  (def ds (->  src-ds
                (ds/categorical->number cf/categorical)
                (ds-mod/set-inference-target "species")))
   (def feature-ds (cf/feature ds))
   (def target-ds (cf/target ds))
-  (predict feature-ds (thaw-model trained)
-           {:target-columns ["species"]
-            :target-categorical-maps cat-maps
-            :options {:model-type :xgboost/classification}}))
+  (def trained (ml/train ds {:model-type :xgboost/classification}))
+  (def predictions (ml/predict feature-ds trained))
+  (def rev-mapped (ds-mod/probability-distributions->label-column predictions "species"))
+  (require '[tech.v3.ml.loss :as loss])
+  (loss/classification-accuracy (rev-mapped "species") (src-ds "species"))
+
+  )
