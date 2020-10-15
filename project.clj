@@ -1,11 +1,25 @@
-(defproject techascent/tech.ml "3.03-SNAPSHOT"
-  :description "Base concepts of the techascent ml suite"
+(defproject techascent/tech.ml "5.00-alpha1-SNAPSHOT"
+  :description "Basic machine learning toolkit"
   :url "http://github.com/techascent/tech.ml-base"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :plugins [[lein-tools-deps "0.4.5"]]
-  :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
-  :dependencies [[techascent/tech.ml.dataset "4.04" :scope "provided"]]
-  :lein-tools-deps/config {:config-files [:install :user :project]}
-  :profiles {:dev {:lein-tools-deps/config {:resolve-aliases [:test]}}}
+  :dependencies [[org.clojure/clojure "1.10.2-alpha1"]
+                 [techascent/tech.ml.dataset "5.00-alpha1"]
+                 [ml.dmlc/xgboost4j "0.90"
+                  :exclusions [org.scala-lang/scala-library
+                               org.scala-lang/scala-compiler
+                               org.scala-lang/scala-reflect]]]
+  :profiles
+  {:codox
+   {:dependencies [[codox-theme-rdash "0.1.2"]]
+    :plugins [[lein-codox "0.10.7"]]
+    :codox {:project {:name "tech.ml"}
+            :metadata {:doc/format :markdown}
+            :themes [:rdash]
+            :source-paths ["src"]
+            :output-path "docs"
+            :doc-paths ["topics"]
+            :source-uri "https://github.com/techascent/tech.ml/blob/master/{filepath}#L{line}"
+            :namespaces [tech.v3.ml]}}}
+  :aliases {"codox" ["with-profile" "codox,dev" "codox"]}
   :java-source-paths ["java"])

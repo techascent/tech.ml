@@ -1,371 +1,99 @@
-(ns tech.ml
-  (:require [tech.ml.registry :as registry]
-            [tech.ml.protocols.system :as system-proto]
-            [tech.ml.dataset :as ds]
-            [tech.ml.dataset.column :as ds-col]
-            [tech.ml.dataset.pipeline.column-filters :as cf]
-            [tech.ml.gridsearch :as ml-gs]
-            [tech.ml.util :as ml-util]
-            [tech.parallel :as parallel]
-            [tech.v2.datatype :as dtype]
-            [tech.v2.datatype.casting :as casting]
-            [tech.v2.datatype.typecast :as typecast]
-            [tech.v2.datatype.functional :as dfn]
-            [tech.v2.datatype.builtin-op-providers :as builtin-op-providers]
-            [tech.ml.dataset.utils :as ds-utils]
-            [clojure.tools.logging :as log]
-            [clojure.set :as c-set]
-            [clojure.pprint :as pp]
-            [tech.ml.dataset.options :as ds-options])
+(ns tech.v3.ml
+  "Simple machine learning based on tech.v3.dataset functionality."
+  (:require [tech.v3.datatype.errors :as errors]
+            [tech.v3.dataset :as ds]
+            [tech.v3.dataset.column-filters :as cf])
   (:import [java.util UUID]))
 
 
-(defn- normalize-column-seq
-  [col-seq]
-  (cond
-    (sequential? col-seq)
-    (vec col-seq)
-    (set? col-seq)
-    (vec col-seq)
-    (or (keyword? col-seq)
-        (string? col-seq))
-    [col-seq]
-    :else
-    (throw (ex-info (format "Failed to normalize column sequence %s" col-seq)
-                    {:column-seq col-seq}))))
+(defonce ^{:doc "Map of model kwd to model definition"} model-definitions* (atom nil))
+
+
+(defn define-model
+  "Create a model definition.  An ml model is a function that takes a dataset and an options map and
+  returns a model.  A model is something that, combined with a dataset, produces a inferred
+  dataset."
+  [model-kwd train-fn predict-fn {:keys [hyperparameter-map
+                                         thaw-fn
+                                         explain-fn]}]
+  (swap! model-definitions* assoc model-kwd {:train-fn train-fn
+                                             :predict-fn predict-fn
+                                             :hyperparameters hyperparameter-map
+                                             :thaw-fn thaw-fn
+                                             :explain-fn explain-fn}))
+
+
+(defn options->model-def
+  "Model definitions are specified by the :model-type keyword in the options map."
+  [options]
+  (if-let [model-def (get @model-definitions* (:model-type options))]
+    model-def
+    (errors/throwf "Failed to find model %s.  Is a require missing?" (:model-type options))))
+
+
+(defn hyperparameters
+  "Get the hyperparameters from the model-type in the options."
+  [model-kwd]
+  (:hyperparameters (options->model-def {:model-type model-kwd})))
 
 
 (defn train
-  "Train a model.  Returns a map of:
-  {:model - direct result of system-proto/train
-   :options - options used to train model
-   :id - random UUID generated}"
-  ([options feature-dataset label-dataset]
-   (when-not (->> (ds/columns dataset)
-                  (map dtype/get-datatype)
-                  (every? casting/numeric-type?))
-     (throw (ex-info "Currently no systems can handle non-numeric data." {})))
-   (let [feature-columns (normalize-column-seq feature-columns)
-         label-columns (normalize-column-seq label-columns)
-         dataset (-> (ds/->dataset dataset)
-                     (ds/select (concat feature-columns label-columns) :all)
-                     (ds/set-inference-target label-columns))]
-     (when-not (> (count feature-columns) 0)
-       (throw (ex-info "Must be at least one feature column to train"
-                       {:feature-columns feature-columns})))
-     (when-not (> (count label-columns) 0)
-       (throw (ex-info "Must be at least one label column to train"
-                       {:label-columns label-columns})))
-     ;;We expect the users to serialize the options map so we want to save
-     ;;enough relevant details of the dataset into the map that some portion of the
-     ;;training process is accurately captured.
-     (let [label-map (ds/dataset-label-map dataset)
-           categorical-label-columns (->> (ds/select-columns dataset label-columns)
-                                          (ds/columns)
-                                          (filter #(:categorical? (meta %))))
-           ;;All categorical target columns have to have a map from value to index.
-           label-map (->> categorical-label-columns
-                          (map (fn [col]
-                                 (let [cname (:name (meta col))]
-                                   [cname
-                                    (if (label-map cname)
-                                      (label-map cname)
-                                      (->> (map-indexed #(vector %2 %1)
-                                                        (ds-col/unique col))
-                                           (into {})))])))
-                          (into {}))
-           options (assoc options
-                          :dataset-shape (dtype/shape dataset)
-                          :feature-columns feature-columns
-                          :label-columns label-columns
-                          :label-map label-map
-                          :column-map (->> (ds/columns dataset)
-                                           (map (comp (juxt :name identity)
-                                                      ds-col/metadata))
-                                           (into {})))
+  "Given a dataset and an options map produce a model.  The model-type keyword in the options
+  map selects which model definition to use to train the model.
+  Returns a map containing at least:
 
-           ml-system (registry/system (:model-type options))
-           model (system-proto/train ml-system options (ds/->dataset dataset {}))]
-       {:model model
-        :options options
-        :id (UUID/randomUUID)})))
-  ([dataset options]
-   (train options
-          (cf/feature dataset)
-          (cf/target dataset)
-          dataset)))
+  * `:model-data` - the result of that definitions's train-fn.
+  * `:options` - the options passed in.
+  * `:id` - new randomly generated UUID.
+  * `:feature-columns - vector of column names.
+  * `:target-columns - vector of column names."
+  [dataset options]
+  (let [{:keys [train-fn]} (options->model-def options)
+        feature-ds (cf/feature dataset)
+        _ (errors/when-not-error (> (ds/row-count feature-ds) 0)
+                                 "No features provided")
+        target-ds (cf/target dataset)
+        _ (errors/when-not-error (> (ds/row-count target-ds) 0)
+                                 "No target columns provided
+see tech.v3.dataset.modelling/set-inference-target")
+        model-data (train-fn feature-ds target-ds options)]
+    {:model-data model-data
+     :options options
+     :id (UUID/randomUUID)
+     :feature-columns (vec (ds/column-names feature-ds))
+     :target-columns (vec (ds/column-names target-ds))}))
 
 
 (defn thaw-model
-  "As an optimization, you can thaw a model and hold onto it.  This removes the model
-  byte array and adds a thawed model to the model-map.  For a relatively simple xgboost
-  model (~200K), thawing alone took about 177ms the first time a model was thawed but
-  only 2,3ms subsequently.  The intended use case is when you know you will infer
-  repeatedly given the same model.  Unlike the result of train, theresult of thaw-model
-  can can no longer be serialized.
-  This can also be used to get into model-specific operations that cannot be done
-  via the base ml protocols.
-  Returns a new map with :model removed and :thawed-model added."
-  [train-result]
-  (-> train-result
-      (update :thawed-model
-              (fn [item]
-                (or item (let [ml-system (registry/system
-                                          (get-in train-result
-                                                  [:options :model-type]))]
-                           (system-proto/thaw-model ml-system
-                                                    (:model train-result))))))
-      (dissoc :model)))
-
-
-(defn predict->dataset
-  "Generate a sequence of predictions (inferences) from a training result.
-
-  If classification, returns a sequence of probability distributions if possible.  If
-  not, returns a map the selected option as the key and the probabily as the value.
-
-  If regression, returns the sequence of predicated values."
-  [{:keys [options model thawed-model] :as train-result} dataset]
-  (let [feature-columns (:feature-columns options)
-        _ (when-not (seq feature-columns)
-            (throw (ex-info "Feature columns are missing" train-result)))
-        ;;Order columns identical to training and remove anything else.
-        ;;The select implicitly checks that the columns exist.
-        src-ds dataset
-        dataset (-> (ds/select (ds/->dataset dataset)
-                               feature-columns :all)
-                    (ds/update-columns
-                     feature-columns
-                     #(ds-col/set-metadata % (assoc (ds-col/metadata %)
-                                                    :column-type
-                                                    :feature))))]
-    ;;If this isn't true you are in trouble
-    (let [ml-system (registry/system (:model-type options))
-          thawed-model (-> (thaw-model train-result)
-                           :thawed-model)
-          predictions
-          (system-proto/predict ml-system options thawed-model dataset)]
-      (if (= (dtype/get-datatype predictions) :posterior-probabilities)
-        (let [label-map (ds-options/inference-target-label-map options)
-              inverse-label-map (c-set/map-invert label-map)
-              ordered-labels (->> inverse-label-map
-                                  (sort-by first)
-                                  (mapv second))
-              label-dtype (reduce builtin-op-providers/widest-datatype
-                                  (map dtype/get-datatype ordered-labels))
-              pred-rdr (dtype/->reader predictions)
-              n-labels (count ordered-labels)
-              pred-vals (cond
-                          (< n-labels Byte/MAX_VALUE)
-                          (dtype/make-reader
-                           :int8
-                           (ds/row-count dataset)
-                           (unchecked-byte (-> (pred-rdr idx)
-                                               (ml-util/max-idx))))
-                          (< n-labels Short/MAX_VALUE)
-                          (dtype/make-reader
-                           :int16
-                           (ds/row-count dataset)
-                           (unchecked-byte (-> (pred-rdr idx)
-                                               (ml-util/max-idx))))
-                          (< n-labels Integer/MAX_VALUE)
-                          (dtype/make-reader
-                           :int32
-                           (ds/row-count dataset)
-                           (unchecked-byte (-> (pred-rdr idx)
-                                               (ml-util/max-idx))))
-                          :else
-                          (dtype/make-reader
-                           :int64
-                           (ds/row-count dataset)
-                           (unchecked-byte (-> (pred-rdr idx)
-                                               (ml-util/max-idx)))))
-              ds (ds/assoc src-ds :prediction (ds-col/new-column
-                                               :prediction (dtype/clone pred-vals)
-                                               {:label-map label-map}))
-              posterior-colnames (->> ordered-labels
-                                      (mapv #(keyword (format "prediction.%s"
-                                                              (ml-util/->str %)))))]
-          (->> (range (count ordered-labels))
-               (reduce (fn [ds col-num]
-                         (let [cname (posterior-colnames col-num)]
-                           (ds/assoc ds cname
-                                     (-> (dtype/make-reader
-                                          :float64
-                                          (ds/row-count dataset)
-                                          (double
-                                           (ml-util/item-at (pred-rdr idx)
-                                                            col-num)))
-                                         (dtype/clone)))))
-                       (vary-meta ds assoc
-                                  :posterior-column-names
-                                  (->> (map vector posterior-colnames ordered-labels)
-                                       (into {}))))))
-        ;;Force computations that may be lazy.
-        (let [predictions (if (dtype/->array predictions)
-                            predictions
-                            (dtype/make-container :java-array
-                                                  (dtype/get-datatype predictions)
-                                                  predictions))
-              target-cols (ds/inference-target-column-names src-ds)
-              retval (ds/assoc src-ds :prediction predictions)]
-          ;;If the answers were passed in then (lazily) calculate the residuals
-          (if (= 1 (count target-cols))
-            (ds/assoc retval :residual (dfn/- (ds/column src-ds
-                                                         (first target-cols))
-                                              predictions))
-            retval))))))
-
-
-(defn dataset->posterior-maps
-  [ds]
-  (if-let [cnames (:posterior-column-names (meta ds))]
-    (-> (ds/select-columns ds cnames)
-        (ds/mapseq-reader))
-    (throw (Exception. "Dataset does not have posterior column names"))))
+  "Thaw a model.  Model's stored in options map may be 'frozen' meaning a 'thaw' operations is needed
+  in order to use the model.  This happens for you during preduct but you may also cached the 'thawed'
+  model on the model map under the ':thawed-model' keyword."
+  [model {:keys [thaw-fn]}]
+  (if-let [cached-model (get model :thawed-model)]
+    cached-model
+    (if thaw-fn
+      (thaw-fn (get model :model))
+      (get model :model))))
 
 
 (defn predict
-  "Backwards compatible wrapper around predict->dataset.
-  Please see documentation for predict->dataset.
+  "Predict returns a dataset with only the predictions in it.
 
-  For regression, returns a float64 reader
-  For classification, returns a list of posterior distributions"
-  [model dataset]
-  (let [pred-ds (predict->dataset model dataset)]
-    (if (:posterior-column-names (meta pred-ds))
-      (dataset->posterior-maps pred-ds)
-      (pred-ds :prediction))))
-
-
-(defn explain-model
-  ([{:keys [options model] :as train-result} explain-options]
-   (let [ml-system (registry/system (:model-type options))]
-     (system-proto/explain-model ml-system model (merge options explain-options))))
-  ([train-result]
-   (explain-model train-result {})))
+  * For regression, a single column dataset is returned with the column named after the target
+  * For classification, a dataset is returned with a float64 column for each target value and values
+    that describe the probability distribution."
+  [dataset model]
+  (let [{:keys [predict-fn] :as model-def} (options->model-def (:options model))
+        feature-ds (ds/select-columns dataset (:feature-columns model))
+        thawed-model (thaw-model model model-def)]
+    (predict-fn feature-ds thawed-model)))
 
 
-(defn dataset-seq->dataset-model-seq
-  "Given a sequence of {:train-ds ...} datasets, produce a sequence of:
-  {:model ...}
-  train-ds is removed to keep memory usage as low as possible.
-  See ds/dataset->k-fold-datasets"
-  [options dataset-seq]
-  (->> dataset-seq
-       (map (fn [{:keys [train-ds] :as dataset-entry}]
-              (let [{model :retval
-                     train-time :milliseconds}
-                    (ds-utils/time-section (train options train-ds))]
-                (merge (assoc model :train-time train-time)
-                       (dissoc dataset-entry :train-ds)))))))
-
-
-(defn average-prediction-error
-  "Average prediction error across models generated with these datasets
-  Page 242, https://web.stanford.edu/~hastie/ElemStatLearn/.
-  Result is the best train result annoted with the average loss of the group
-  and total train and predict times."
-  [options loss-fn dataset-seq]
-  (when-not (seq dataset-seq)
-    (throw (ex-info "Empty dataset sequence" {:dataset-seq dataset-seq})))
-  (let [train-predict-data
-        (->> (dataset-seq->dataset-model-seq options dataset-seq)
-             (map (fn [{:keys [test-ds options model] :as train-result}]
-                    (let [{predictions :retval
-                           predict-time :milliseconds}
-                          (ds-utils/time-section (predict train-result test-ds))
-                          labels (ds/labels test-ds)]
-                      (merge (dissoc train-result :test-ds)
-                             {:predict-time predict-time
-                              :loss (loss-fn predictions labels)})))))
-        ds-count (count dataset-seq)
-        ave-fn #(* (/ 1.0 ds-count) %)
-        total-seq #(apply + 0 %)
-        total-loss (total-seq (map :loss train-predict-data))
-        total-predict (total-seq (map :predict-time train-predict-data))
-        total-train (total-seq (map :train-time train-predict-data))]
-    (merge (->> train-predict-data
-                (sort-by :loss)
-                first)
-           {:average-loss (ave-fn total-loss)
-            :total-train-time total-train
-            :total-predict-time total-predict})))
-
-
-(defn auto-gridsearch-options
-  [options]
-  (let [ml-system (registry/system (:model-type options))]
-    (merge (system-proto/gridsearch-options ml-system options)
-           options)))
-
-
-;;The gridsearch error reporter is called when there is an error during gridsearch.
-;;It is called like so:
-;;(*gridsearch-error-reporter options-map error)
-(def ^:dynamic *gridsearch-error-reporter* #(log/warn %2 (with-out-str
-                                                           (clojure.pprint/pprint
-                                                            %1))))
-
-
-(defn gridsearch
-  "Gridsearch these system/option pairs by this dataset, averaging the errors
-  across k-folds and taking the lowest top-n options.
-We are breaking out of 'simple' and into 'easy' here, this is pretty
-opinionated.  The point is to make 80% of the cases work great on the
-first try."
-  [{:keys [parallelism top-n gridsearch-depth k-fold]
-    :or {parallelism (.availableProcessors
-                      (Runtime/getRuntime))
-         top-n 5
-         gridsearch-depth 50
-         k-fold 5}
-    :as options}
-   loss-fn dataset]
-  (when-not (->> (ds/columns dataset)
-                 (map dtype/get-datatype)
-                 (every? casting/numeric-type?))
-    (throw (ex-info "Currently no systems can handle non-numeric data."
-                    {:non-numeric-columns
-                     (->> (ds/columns dataset)
-                          (map ds-col/metadata)
-                          (filter #(= :string (:datatype %))))})))
-  ;;Should do row-major conversion here and make it work later.  We specifically
-  ;;know the feature and labels can't change.
-  (log/infof "Gridsearching: %s"
-             (with-out-str
-               (pp/pprint {:top-n top-n
-                           :gridsearch-depth gridsearch-depth
-                           :k-fold k-fold})))
-  (let [dataset-seq (if (and k-fold (> (int k-fold) 1))
-                      (vec (ds/->k-fold-datasets dataset k-fold options))
-                      [(ds/->train-test-split dataset options)])]
-    (->> (ml-gs/gridsearch options)
-         (take gridsearch-depth)
-         (parallel/queued-pmap
-          parallelism
-          (fn [options-map]
-            (try
-              (let [retval
-                    (average-prediction-error options-map
-                                              loss-fn
-                                              dataset-seq)]
-                (if (dfn/valid? (:average-loss retval))
-                  retval
-                  (do
-                    (log/warnf "Model produced nan or inf loss: %s"
-                               (with-out-str
-                                 (pp/pprint retval)))
-                    nil)))
-              (catch Throwable e
-                (when *gridsearch-error-reporter*
-                  (*gridsearch-error-reporter* options-map e))
-                nil))))
-         (remove nil?)
-         ;;Partition to keep sorting time down a bit.
-         (partition-all top-n)
-         (reduce (fn [best-items next-group]
-                   (->> (concat best-items next-group)
-                        (sort-by :average-loss)
-                        (take top-n)))
-                 []))))
+(defn explain
+  "Explain (if possible) an ml model.  A model explanation is a model-specific map
+  of data that usually indicates some level of mapping between features and importance"
+  [model]
+  (let [{:keys [explain-fn] :as model-def}
+        (options->model-def (:options model))]
+    (when explain-fn
+      (explain-fn (thaw-model model model-def)))))
