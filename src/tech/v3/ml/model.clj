@@ -1,9 +1,10 @@
-(ns tech.ml.model
-  (:require [tech.io.temp-file :as temp-file]
-            [tech.resource :as resource]
-            [tech.resource.stack :as stack]
-            [tech.io :as io]
-            [tech.io.url :as io-url])
+(ns tech.v3.ml.model
+  "Internal namespace of helper functions used to implement models."
+  (:require [tech.v3.datatype :as dtype]
+            [tech.v3.tensor :as dtt]
+            [tech.v3.dataset.tensor :as ds-tens]
+            [tech.v3.dataset :as ds]
+            [clojure.set :as set])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream
             ObjectOutputStream ObjectInputStream
             InputStream OutputStream]))
@@ -35,35 +36,25 @@
     (.readObject obj-in-stream)))
 
 
-(defn model-file-save->byte-array
-  "Given a save fn that takes 1 argument, where to save the file,
-  produce a byte array."
-  ^bytes [save-fn]
-  (resource/stack-resource-context
-   (let [temp-file (-> (temp-file/temp-resource-file)
-                       io-url/url->file-path)]
-     (save-fn temp-file)
-     (with-open [^InputStream in-s (io/input-stream (io/file temp-file))
-                 out-b (ByteArrayOutputStream.)]
-       (io/copy in-s out-b)
-       (.toByteArray out-b)))))
+(defn finalize-regression
+  [reg-tens target-cname]
+  (let [n-rows (dtype/ecount reg-tens)]
+    (-> (dtt/reshape reg-tens [n-rows 1])
+        (ds-tens/tensor->dataset)
+        (ds/rename-columns {0 target-cname})
+        (ds/update-columnwise :all vary-meta assoc :column-type :prediction)
+        (vary-meta assoc :model-type :regression))))
 
 
-(defn byte-array-file-load->model
-  "Given the saved bytes and a load fn that takes 1 argument, where to load the file,
-  produce a model."
-  [byte-model load-fn]
-  (let [{retval :return-value
-         resource-seq :resource-seq}
-        (resource/stack-resource-context
-         (let [temp-file (-> (temp-file/temp-resource-file)
-                             io-url/url->file-path)]
-           (with-open [in-s (ByteArrayInputStream. ^bytes byte-model)
-                       ^OutputStream outf (io/output-stream (io/file temp-file))]
-             (io/copy in-s outf))
-           (stack/return-resource-seq (load-fn temp-file))))]
-    ;;If there were resource associated with the model load itelf, register those
-    ;;with the larger context.
-    (when (seq resource-seq)
-      (resource/track #(stack/release-resource-seq resource-seq)))
-    retval))
+(defn finalize-classification
+  [cls-tens n-rows target-cname target-categorical-maps]
+  (let [rename-map (-> (get-in target-categorical-maps
+                               [target-cname :lookup-table])
+                       (set/map-invert))
+        n-cols (count rename-map)]
+    (-> (dtt/reshape cls-tens [n-rows n-cols])
+        (ds-tens/tensor->dataset)
+        (ds/rename-columns rename-map)
+        (ds/update-columnwise :all vary-meta assoc
+                              :column-type :probability-distribution)
+        (vary-meta assoc :model-type :classification))))

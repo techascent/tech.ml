@@ -1,6 +1,7 @@
-(ns tech.libs.smile.protocols
-  (:require [tech.libs.smile.data :as smile-data]
-            [tech.v2.datatype :as dtype])
+(ns tech.v3.libs.smile.protocols
+  (:require [tech.v3.libs.smile.data :as smile-data]
+            [tech.v3.datatype :as dtype]
+            [tech.v3.dataset.utils :as ds-utils])
   (:import [smile.data.formula Formula]
            [smile.data.type StructType]
            [smile.regression DataFrameRegression]
@@ -31,13 +32,14 @@
 
 
 (defn initialize-model-formula!
-  [model options]
-  (let [colmap (:column-map options)
-        formula (->formula model)
-        ^List fields (->> colmap
-                          (mapv (fn [[k {:keys [datatype]}]]
+  [model feature-ds]
+  (let [formula (->formula model)
+        ^List fields (->> (vals feature-ds)
+                          (map meta)
+                          (mapv (fn [{:keys [name datatype]}]
                                   (smile-data/smile-struct-field
-                                   k datatype))))
+                                   (ds-utils/column-safe-name name)
+                                   datatype))))
         struct-type (StructType. fields)]
     (.bind formula struct-type)))
 

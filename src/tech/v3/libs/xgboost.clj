@@ -5,6 +5,7 @@
   (:require [tech.v3.datatype :as dtype]
             [tech.v3.datatype.errors :as errors]
             [tech.v3.ml :as ml]
+            [tech.v3.ml.model :as model]
             [tech.v3.ml.gridsearch :as ml-gs]
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.tensor :as ds-tens]
@@ -249,18 +250,14 @@ c/xgboost4j/java/XGBoost.java#L208"))
   [feature-ds thawed-model {:keys [target-columns target-categorical-maps options]}]
   (let [predict-ds (->> (dataset->dmatrix feature-ds)
                         (.predict ^Booster thawed-model)
-                        (dtt/->tensor)
-                        (ds-tens/tensor->dataset))
+                        (dtt/->tensor))
         target-cname (first target-columns)]
     (if (multiclass-objective? (options->objective options))
-      (-> (ds/rename-columns predict-ds (-> (get-in target-categorical-maps
-                                                    [target-cname :lookup-table])
-                                            (set/map-invert)))
-          (ds/update-columnwise :all vary-meta assoc :column-type :probability-distribution)
-          (vary-meta assoc :model-type :classification))
-      (-> (ds/rename-columns predict-ds {0 target-cname})
-          (ds/update-columnwise :all vary-meta assoc :column-type :prediction)
-          (vary-meta assoc :model-type :regression)))))
+      (model/finalize-classification predict-ds
+                                     (ds/row-count feature-ds)
+                                     target-cname
+                                     target-categorical-maps)
+      (model/finalize-regression predict-ds target-cname))))
 
 
 (defn- explain
@@ -360,4 +357,5 @@ c/xgboost4j/java/XGBoost.java#L208"))
          (sort-by :loss)
          (take 10)
          (map #(select-keys % [:loss :options]))))
+  ;;consistently gets .849 or so accuracy on best models.
   )

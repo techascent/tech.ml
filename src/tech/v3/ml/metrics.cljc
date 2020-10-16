@@ -1,101 +1,101 @@
-(ns tech.ml.metrics
-  "Excellent metrics tools from the cortex project.
-  The original author should PR an appropriate namespace doc."
-  (:require [clojure.core.matrix :as m]))
+(ns tech.v3.ml.metrics
+  "Excellent metrics tools from the cortex project."
+  (:require [tech.v3.datatype :as dtype]
+            [tech.v3.datatype.functional :as dfn]))
 
 (defn wrongs
   "Given `y` array of ground truth labels and `y_hat` classifier predictions,
   returns array with 1.0 values where `y` does not equal `y_hat`."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (m/emap m/ne y y_hat))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (dfn/not-eq y y_hat))
 
 (defn error-rate
   "First argument `y` is the true class, `y_hat` is the predicted value.
   Returns the percentage error rate."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (let [wrong (m/esum (wrongs y y_hat))
-        len (float (m/ecount y))]
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (let [wrong (dfn/sum (wrongs y y_hat))
+        len (float (dtype/ecount y))]
     (/ wrong len)))
 
 (defn accuracy
   "First argument `y` is the true class, `y_hat` is the predicted value.
   Returns the percentage correct."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
   (- 1.0 (error-rate y y_hat)))
 
 (defn false-positives
   "Returns array with 1. values assigned to false positives."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (m/eq 1 (m/emap - y_hat y)))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (dfn/eq 1 (dfn/- y_hat y)))
 
 (defn false-negatives
   "Returns array with 1. values assigned to false negatives."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (m/eq 1 (m/emap - y y_hat)))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (dfn/eq 1 (dfn/- y y_hat)))
 
 (defn true-positives
   "Returns array with 1. values assigned to true positives."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (m/emul y y_hat))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (dfn/* y y_hat))
 
 (defn true-negatives
   "Returns array with 1. values assigned to true negatives."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (m/eq 0 (m/emap + y y_hat)))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (dfn/eq 0 (dfn/+ y y_hat)))
 
 (defn recall
   "Returns recall for a binary classifier, a measure of false negative rate"
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (let [true-count (m/esum y)
-        true-pos-count (m/esum (true-positives y y_hat))]
-    (/ (float true-pos-count) true-count)))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (let [true-count (dfn/sum y)
+        true-pos-count (dfn/sum (true-positives y y_hat))]
+    (/ (double true-pos-count) true-count)))
 
 (defn precision
   "Returns precision for a binary classifier, a measure of false positive rate"
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (let [true-pos-count (m/esum (true-positives y y_hat))
-        false-pos-count (m/esum (false-positives y y_hat))]
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (let [true-pos-count (dfn/sum (true-positives y y_hat))
+        false-pos-count (dfn/sum (false-positives y y_hat))]
     (/ true-pos-count (float (+ true-pos-count false-pos-count)))))
 
 (defn fpr
   "The false negative rate, using the strict ROC definition."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (/ (m/esum (false-positives y y_hat))
-     (m/esum (m/emap (partial m/ne 1.) y_hat))))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (/ (dfn/sum (false-positives y y_hat))
+     (dfn/sum (dfn/not-eq 1 y_hat))))
 
 (defn tpr
   "The true positive rate, using the strict ROC definition."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
-  (/ (m/esum (true-positives y y_hat))
-     (m/esum y_hat)))
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
+  (/ (dfn/sum (true-positives y y_hat))
+     (dfn/sum y_hat)))
 
 (defn fnr
   "The false negative rate, using the strict ROC definition."
   [y y_hat]
-  {:pre [(= (m/shape y) (m/shape y_hat))]}
+  {:pre [(= (dtype/shape y) (dtype/shape y_hat))]}
   (- 1 (tpr y y_hat)))
 
 (defn threshold
   "Return a binary mask of all values above threshold."
   [y_est thresh]
-  (m/emap m/ge y_est thresh))
+  (dfn/>= y_est thresh))
 
 (defn unit-space
   "Returns an array with divs+1 values that evenly divide a space from 0.0 to
   1.0, inclusive."
   [divs]
-  (m/emap #(/ % divs) (m/array (range (inc divs)))))
+  (dfn/* (/ 1.0 (double divs)) (range (inc divs))))
 
 (defn- roc-dedupe
   "Dedupes all values for the roc curve in which the same true and false positive
@@ -119,11 +119,12 @@
   ([y y_est] (roc-curve y y_est 100))
   ([y y_est bins]
    (let [threshold-space (unit-space bins)
-         thresholds (remove (fn [th] ; thresholds of all yes or all no create nonsense output
-                              (let [pred-count (m/esum (threshold y_est th))]
-                                (or (zero? pred-count)
-                                    (= pred-count (float (m/ecount y_est))))))
-                            threshold-space)
+         thresholds (remove
+                     (fn [th] ; thresholds of all yes or all no create nonsense output
+                       (let [pred-count (dfn/sum (threshold y_est th))]
+                         (or (zero? pred-count)
+                             (= pred-count (float (dtype/ecount y_est))))))
+                     threshold-space)
          fprs (map #(fpr y (threshold y_est %)) thresholds)
          tprs (map #(tpr y (threshold y_est %)) thresholds)]
      (roc-dedupe (map vector fprs tprs thresholds)))))
@@ -137,9 +138,10 @@
    (->> (roc-curve y y_est bins)
         (map (fn [[fp tp thresh]]
                [thresh
-                (m/abs (- fp (- 1 tp)))]))
+                (dfn/abs (- fp (- 1 tp)))]))
         (apply min-key second)
         first)))
+
 
 (defn eer-accuracy
   "Returns the accuracy where TPR and FPR are balanced, as well as the

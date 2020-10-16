@@ -1,14 +1,13 @@
-(ns tech.libs.smile.classification
-  (:require [tech.v2.datatype :as dtype]
-            [tech.v2.datatype.casting :as casting]
-            [tech.ml.protocols.system :as ml-proto]
-            [tech.ml.model :as model]
-            [tech.ml.registry :as registry]
-            [tech.ml.dataset :as ds]
-            [tech.ml.gridsearch :as ml-gs]
-            [tech.ml.util :as ml-util]
-            [tech.ml.dataset.options :as ds-options]
-            [tech.libs.smile.protocols :as smile-proto])
+(ns tech.v3.libs.smile.classification
+  "Namespace to include to enable a set of smile classification models."
+  (:require [tech.v3.datatype :as dtype]
+            [tech.v3.dataset :as ds]
+            [tech.v3.dataset.utils :as ds-utils]
+            [tech.v3.tensor :as dtt]
+            [tech.v3.ml.gridsearch :as ml-gs]
+            [tech.v3.ml.model :as model]
+            [tech.v3.ml :as ml]
+            [tech.v3.libs.smile.protocols :as smile-proto])
   (:import [smile.classification SoftClassifier AdaBoost LogisticRegression]
            [smile.data.formula Formula]
            [smile.data DataFrame]
@@ -17,45 +16,30 @@
 
 (set! *warn-on-reflection* true)
 
-
-(defn tuple-predict-posterior
+(defn- tuple-predict-posterior
   [^SoftClassifier model ds options n-labels]
   (let [df (ds/dataset->smile-dataframe ds)]
-    (smile-proto/initialize-model-formula! model options)
-    (->> (dtype/make-reader
-          :posterior-probabilities
-          (ds/row-count ds)
-          (let [posterior (double-array n-labels)]
-            (.predict model (.get df idx) posterior)
-            posterior))
-         (dtype/make-container :typed-buffer :posterior-probabilities))))
-
-(defn tuple-predict-posterior
-  [^SoftClassifier model ds options n-labels]
-  (let [df (ds/dataset->smile-dataframe ds)]
-    (smile-proto/initialize-model-formula! model options)
-    (->> (dtype/make-reader
-          :posterior-probabilities
-          (ds/row-count ds)
-          (let [posterior (double-array n-labels)]
-            (.predict model (.get df idx) posterior)
-            posterior))
-         (dtype/make-container :typed-buffer :posterior-probabilities))))
+    (smile-proto/initialize-model-formula! model ds)
+    (dtype/make-reader
+     :object
+     (ds/row-count ds)
+     (let [posterior (double-array n-labels)]
+       (.predict model (.get df idx) posterior)
+       posterior))))
 
 
-(defn double-array-predict-posterior
+(defn- double-array-predict-posterior
   [^SoftClassifier model ds options n-labels]
   (let [value-reader (ds/value-reader ds)]
-    (->> (dtype/make-reader
-          :posterior-probabilities
-          (ds/row-count ds)
-          (let [posterior (double-array n-labels)]
-            (.predict model (double-array (value-reader idx)) posterior)
-            posterior))
-         (dtype/make-container :typed-buffer :posterior-probabilities))))
+    (dtype/make-reader
+     :object
+     (ds/row-count ds)
+     (let [posterior (double-array n-labels)]
+       (.predict model (double-array (value-reader idx)) posterior)
+       posterior))))
 
 
-(def classifier-metadata
+(def ^:private classifier-metadata
   {:ada-boost
    {:name :ada-boost
     :options [{:name :trees
@@ -70,8 +54,8 @@
               {:name :node-size
                :type :int32
                :default 1}]
-    :gridsearch-options {:trees (ml-gs/linear-long [2 500])
-                         :max-nodes (ml-gs/linear-long [4 1000])}
+    :gridsearch-options {:trees (ml-gs/linear 2 50 10 :int64)
+                         :max-nodes (ml-gs/linear 4 1000 20 :int64)}
     :property-name-stem "smile.databoost"
     :constructor #(AdaBoost/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
     :predictor tuple-predict-posterior}
@@ -86,9 +70,9 @@
               {:name :max-iter
                :type :int32
                :default 500}]
-    :gridsearch-options {:lambda (ml-gs/exp [1e-3 1e2])
-                         :tolerance (ml-gs/linear [1e-9 1e-1])
-                         :max-iter (ml-gs/linear-long [1e2 1e4])}
+    :gridsearch-options {:lambda (ml-gs/linear 1e-3 1e2 30)
+                         :tolerance (ml-gs/linear 1e-9 1e-1 20)
+                         :max-iter (ml-gs/linear 1e2 1e4 20 :int64)}
     :constructor #(LogisticRegression/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
     :predictor double-array-predict-posterior}
 
@@ -286,7 +270,7 @@
    })
 
 
-(defmulti model-type->classification-model
+(defmulti ^:private model-type->classification-model
   (fn [model-type] model-type))
 
 
@@ -299,48 +283,67 @@
                      :available-types (keys classifier-metadata)}))))
 
 
-(defrecord SmileClassification []
-  ml-proto/PMLSystem
-  (system-name [_] :smile.classification)
-  (gridsearch-options [system options]
-    (let [entry-metadata (model-type->classification-model
-                          (model/options->model-type options))]
-      (if-let [retval (:gridsearch-options entry-metadata)]
-        retval
-        (throw (ex-info "Model type does not support auto gridsearch yet"
-                        {:entry-metadata entry-metadata})))))
-  (train [system options dataset]
-    (let [entry-metadata (model-type->classification-model
-                          (model/options->model-type options))
-          target-colname (:target options)
-          feature-colnames (->> (map meta (ds/columns dataset))
-                                (remove #(= :inference (:column-type %)))
-                                (map (comp ml-util/->str :name)))
-          formula (smile-proto/make-formula (ml-util/->str target-colname)
-                                            feature-colnames)
-          dataset (if (casting/integer-type? (dtype/get-datatype
-                                              (dataset target-colname)))
-                    dataset
-                    (ds/column-cast dataset target-colname :int32))
-          data (ds/dataset->smile-dataframe dataset)
-          properties (smile-proto/options->properties entry-metadata dataset options)
-          ctor (:constructor entry-metadata)
-          model (ctor formula data properties)]
-      (model/model->byte-array model)))
-  (thaw-model [system model]
-    (model/byte-array->model model))
-  (predict [system options thawed-model dataset]
-    (let [entry-metadata (model-type->classification-model
-                          (model/options->model-type options))
-          target-colname (:target options)
-          n-labels (-> (get-in options [:label-map target-colname])
-                       count)
-          predictor (:predictor entry-metadata)]
-      (predictor thawed-model dataset options n-labels))))
+(defn- train
+  [feature-ds label-ds options]
+  (let [entry-metadata (model-type->classification-model
+                        (model/options->model-type options))
+        target-colname (first (ds/column-names label-ds))
+        feature-colnames (ds/column-names feature-ds)
+        formula (smile-proto/make-formula (ds-utils/column-safe-name target-colname)
+                                          (map ds-utils/column-safe-name
+                                               feature-colnames))
+        dataset (merge feature-ds
+                       (ds/update-columnwise
+                        label-ds :all
+                        dtype/elemwise-cast :int32))
+        data (ds/dataset->smile-dataframe dataset)
+        properties (smile-proto/options->properties entry-metadata dataset options)
+        ctor (:constructor entry-metadata)
+        model (ctor formula data properties)]
+    (model/model->byte-array model)))
 
 
+(defn- thaw
+  [model-data]
+  (model/byte-array->model model-data))
 
-(def system (constantly (->SmileClassification)))
+
+(defn- predict
+  [feature-ds thawed-model {:keys [target-columns
+                                   target-categorical-maps
+                                   options]}]
+  (let [entry-metadata (model-type->classification-model
+                        (model/options->model-type options))
+        target-colname (first target-columns)
+        n-labels (-> (get target-categorical-maps target-colname)
+                     count)
+        predictor (:predictor entry-metadata)]
+    (-> (predictor thawed-model feature-ds options n-labels)
+        (dtt/->tensor)
+        (model/finalize-classification (ds/row-count feature-ds)
+                                       target-colname
+                                       target-categorical-maps))))
+
+(doseq [[reg-kwd reg-def] classifier-metadata]
+  (ml/define-model! (keyword "smile.classification" (name reg-kwd))
+    train predict {:thaw-fn thaw
+                   :hyperparameters (:gridsearch-options reg-def)}))
 
 
-(registry/register-system (system))
+(comment
+  (do
+    (require '[tech.v3.dataset.column-filters :as cf])
+    (require '[tech.v3.dataset.modelling :as ds-mod])
+    (require '[tech.v3.ml.loss :as loss])
+    (def src-ds (ds/->dataset "test/data/iris.csv"))
+    (def ds (->  src-ds
+                 (ds/categorical->number cf/categorical)
+                 (ds-mod/set-inference-target "species")))
+    (def feature-ds (cf/feature ds))
+    (def split-data (ds-mod/train-test-split ds))
+    (def train-ds (:train-ds split-data))
+    (def test-ds (:test-ds split-data))
+    (def model (ml/train train-ds {:model-type :smile.classification/ada-boost}))
+    (def prediction (ml/predict test-ds model))
+    )
+  )
