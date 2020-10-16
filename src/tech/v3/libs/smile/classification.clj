@@ -1,5 +1,5 @@
 (ns tech.v3.libs.smile.classification
-  "Namespace to include to enable a set of smile classification models."
+  "Namespace to require to enable a set of smile classification models."
   (:require [tech.v3.datatype :as dtype]
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.utils :as ds-utils]

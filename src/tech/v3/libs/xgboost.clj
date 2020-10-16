@@ -24,7 +24,7 @@
 (set! *warn-on-reflection* true)
 
 
-(def objective-types
+(def ^:private objective-types
   {:linear-regression "reg:linear"
    :squared-error-regression "reg:squarederror"
    :logistic-regression "reg:logistic"
@@ -149,7 +149,7 @@
       (= objective "multi:softprob")))
 
 
-(def hyperparameters
+(def ^:private hyperparameters
   {:subsample (ml-gs/linear 0.7 1.0 3)
    :scale-pos-weight (ml-gs/linear 0.7 1.31 6)
    :max-depth (ml-gs/linear 1 10 10 :int64)
@@ -160,7 +160,7 @@
    :alpha (ml-gs/linear 0.01 0.31 30)})
 
 
-(defn train
+(defn- train
   [feature-ds label-ds options]
   ;;XGBoost uses all cores so serialization here avoids over subscribing
   ;;the machine.

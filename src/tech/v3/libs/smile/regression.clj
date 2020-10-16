@@ -1,4 +1,5 @@
 (ns tech.v3.libs.smile.regression
+  "Namespace to require to enable a set of smile regression models"
   (:require [tech.v3.ml :as ml]
             [tech.v3.ml.model :as model]
             [tech.v3.dataset :as ds]
@@ -28,7 +29,7 @@
 (set! *warn-on-reflection* true)
 
 
-(def cart-loss-table
+(def ^:private cart-loss-table
   {
    ;; Least squares regression. Least-squares is highly efficient for
    ;; normally distributed errors but is prone to long tails and outliers.
