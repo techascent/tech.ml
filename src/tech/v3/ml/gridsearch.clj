@@ -1,116 +1,126 @@
-(ns tech.v3.gridsearch
+(ns tech.v3.ml.gridsearch
   "https://en.wikipedia.org/wiki/Sobol_sequence
   Used to gridsearch efficiently without getting fancy."
-  (:require [clojure.set :as c-set])
+  (:require [tech.v3.datatype.errors :as errors]
+            [tech.v3.datatype.casting :as casting])
   (:import [org.apache.commons.math3.random SobolSequenceGenerator]))
 
 
-(defn sobol-seq
-  "Given a dimension count and optional start index, return an infinite sequence of
+(defn- sobol-seq
+  "Given a set dimension count and optional start index, return an infinite sequence of
   points in the unit hypercube with coordinates in range [0-1].
   :start-index - starting index.  Constant time to start at any index.
   Returns sequence of double arrays of length n-dim."
-  [n-dims gridsearch-start-index]
-  (let [gen (SobolSequenceGenerator. n-dims)]
+  [long-space-projections n-total-elements gridsearch-start-index]
+  (let [gen (SobolSequenceGenerator. (count long-space-projections))]
     (when gridsearch-start-index
       (.skipTo gen gridsearch-start-index))
-    (repeatedly #(.nextVector gen))))
+    (->> (repeatedly #(.nextVector gen))
+         (map (fn [dvec]
+                (mapv (fn [dval proj]
+                        (proj dval))
+                      dvec
+                      long-space-projections)))
+         ;;remove ones we have already tried before.
+         (distinct)
+         ;;Meaning we have only these many steps left
+         (take n-total-elements))))
 
 
-(defn make-gridsearch-fn
-  [target-range grid-fn]
-  (let [[tmin tmax] target-range
-        tmin (double tmin)
-        tmax (double tmax)
-        trange (- tmax tmin)]
-    ;;Value is in range 0-1
-    (fn [^double value]
-      (-> value
-          (* trange)
-          (+ tmin)
-          grid-fn))))
+(defmulti ^:private project
+  "Project a long into the gridsearched element space."
+  (fn [gridsearch-element value]
+    (::type gridsearch-element)))
 
 
-(defn exp
-  "Exponential exploration of the space."
-  [item-range]
-  (make-gridsearch-fn (mapv #(Math/log (double %)) item-range)
-                      #(Math/exp (double %))))
-
-
-(defn exp-long
-  "Exponential exploration of the space."
-  [item-range]
-  (make-gridsearch-fn (mapv #(Math/log (double %)) item-range)
-                      #(-> (double %)
-                           Math/exp
-                           Math/round
-                           long)))
+(defmethod project :default
+  [gridsearch-element value]
+  (errors/throwf "Failed to find projection for gridsearch element %s" gridsearch-element))
 
 
 (defn linear
-  "Linear search through the area."
-  [item-range]
-  (make-gridsearch-fn item-range identity))
+  "Gridsearch a linear space of values"
+  ([start end n-steps res-dtype-or-space]
+   (let [start (double start)
+         end (double end)
+         n-steps (long n-steps)]
+     {::type :linear
+      :start start
+      :end end
+      :n-steps n-steps
+      :result-space res-dtype-or-space}))
+  ([start end n-steps]
+     (linear start end n-steps :float64))
+  ([start end]
+   (linear start end 100 :float64)))
 
 
-(defn linear-long
-  "Linear search through the area."
-  [item-range]
-  (make-gridsearch-fn item-range long))
+(defn categorical
+  "Gridsearch through a list of categorical values"
+  [value-vec]
+  (let [n-elems (count value-vec)]
+    (linear 0 (dec n-elems) n-elems value-vec)))
 
 
-(defn nominative
-  "Non-numeric data.  Vector of options."
-  [label-vec]
-  (let [label-count (count label-vec)
-        max-idx (dec label-count)]
-    (make-gridsearch-fn [0 (max 0 (count label-vec))]
-                        (fn [^double item-val]
-                          (let [idx (min max-idx (long (Math/floor item-val)))]
-                            (get label-vec idx))))))
+(defmethod project :linear
+  ;;Value has already been projected into 0->n-steps integer space
+  [{:keys [start end n-steps result-space]} value]
+  (let [value (long value)
+        start (double start)
+        end (double end)
+        rel-value (/ (double value) (double (dec n-steps)))
+        range (- end start)
+        rel-value (* rel-value range)
+        final-value (+ rel-value start)]
+    (cond
+      (sequential? result-space)
+      (result-space (Math/round final-value))
+      (keyword? result-space)
+      (casting/cast final-value result-space))))
 
 
-(defn- map->path-value-seq*
-  [data-map cur-path item-key]
-  (let [data-item (get data-map item-key)
-        cur-path (conj cur-path item-key)]
-    (if (map? data-item)
-      (->> (keys data-item)
-           (mapcat (partial map->path-value-seq* data-item cur-path)))
-      [[cur-path data-item]])))
+(defn- map->axis
+  ([data-map path axis]
+   (reduce (fn [axis [k v]]
+             (cond
+               (::type v)
+               (let [{:keys [start end n-steps]} v
+                     start (double start)
+                     end (double end)
+                     n-steps (dec (double n-steps))]
+                 (conj axis {:axis (conj path k)
+                             :element v
+                             :lspace-proj (fn ^long [^double sobol-val]
+                                            (Math/round (* sobol-val n-steps)))}))
+               (map? v)
+               (map->axis v (conj path k) axis)
+               :else
+               axis))
+           axis
+           data-map))
+  ([data-map]
+   (map->axis data-map [] [])))
 
 
-(defn map->path-value-seq
-  "Given a map, return a path-value seq where each path is the sequence
-  of keys to get the value."
-  [data-map]
-  (->> (keys data-map)
-       (mapcat (partial map->path-value-seq* data-map []))))
+(defn sobol-gridsearch
+  ([opt-map start-idx]
+   (let [axis (map->axis opt-map)]
+     (if (seq axis)
+       (let [lspace-projections (mapv :lspace-proj axis)
+             total-steps (long (apply * 1.0 (map #(get-in % [:element :n-steps])
+                                                 axis)))]
+         (->> (sobol-seq lspace-projections total-steps start-idx)
+              (map (fn [seq-data]
+                     (reduce (fn [opt-map [seq-elem {:keys [axis element]}]]
+                               (assoc-in opt-map axis (project element seq-elem)))
+                             opt-map
+                             (map vector seq-data axis))))))
+       opt-map)))
+  ([opt-map]
+   (sobol-gridsearch opt-map 0)))
 
 
-(defn path-item-seq->map
-  [path-item-seq]
-  (->> path-item-seq
-       (reduce #(assoc-in %1 (first %2) (second %2)) {})))
-
-
-(defn gridsearch
-  "Given an option map return an infinite sequence of maps.  Values in the map
-  that are fn? are considered valid options for the gridsearch."
-  [option-map & [gridsearch-start-index]]
-  (let [path-val-seq (map->path-value-seq option-map)
-        constant-values (remove (comp fn? second) path-val-seq)
-        dynamic-values (filterv (comp fn? second) path-val-seq)
-        num-dynamic-values (count dynamic-values)]
-    (if (= 0 num-dynamic-values)
-      [(path-item-seq->map constant-values)]
-      (->> (sobol-seq num-dynamic-values gridsearch-start-index)
-           (map (fn [^doubles sobol-data]
-                  (->> (concat constant-values
-                               (->> dynamic-values
-                                    (map-indexed
-                                     (fn [idx [item-key item-fn]]
-                                       [item-key (item-fn (aget sobol-data
-                                                                (int idx)))]))))
-                       path-item-seq->map)))))))
+(comment
+  (def opt-map  {:a (categorical [:a :b :c])
+                 :b (linear 0.01 1 10)})
+  )

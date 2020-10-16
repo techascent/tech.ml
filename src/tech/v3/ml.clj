@@ -14,12 +14,12 @@
   "Create a model definition.  An ml model is a function that takes a dataset and an options map and
   returns a model.  A model is something that, combined with a dataset, produces a inferred
   dataset."
-  [model-kwd train-fn predict-fn {:keys [hyperparameter-map
+  [model-kwd train-fn predict-fn {:keys [hyperparameters
                                          thaw-fn
                                          explain-fn]}]
   (swap! model-definitions* assoc model-kwd {:train-fn train-fn
                                              :predict-fn predict-fn
-                                             :hyperparameters hyperparameter-map
+                                             :hyperparameters hyperparameters
                                              :thaw-fn thaw-fn
                                              :explain-fn explain-fn})
   :ok)
@@ -47,6 +47,7 @@
   "Given a dataset and an options map produce a model.  The model-type keyword in the options
   map selects which model definition to use to train the model.
   Returns a map containing at least:
+
 
   * `:model-data` - the result of that definitions's train-fn.
   * `:options` - the options passed in.
@@ -97,13 +98,12 @@ see tech.v3.dataset.modelling/set-inference-target")
         feature-ds (ds/select-columns dataset (:feature-columns model))
         label-columns (:target-columns model)
         thawed-model (thaw-model model model-def)
-        pred-ds (-> (predict-fn feature-ds
-                                thawed-model
-                                model)
-                    (ds/update-columnwise :all
-                                          vary-meta assoc :column-type :prediction))]
+        pred-ds (predict-fn feature-ds
+                            thawed-model
+                            model)]
     (if (= :classification (:model-type (meta pred-ds)))
-      (ds-mod/probability-distributions->label-column pred-ds (first label-columns))
+      (-> (ds-mod/probability-distributions->label-column pred-ds (first label-columns))
+          (ds/update-column (first label-columns) #(vary-meta % assoc :column-type :prediction)))
       pred-ds)))
 
 

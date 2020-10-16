@@ -5,6 +5,7 @@
   (:require [tech.v3.datatype :as dtype]
             [tech.v3.datatype.errors :as errors]
             [tech.v3.ml :as ml]
+            [tech.v3.ml.gridsearch :as ml-gs]
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.tensor :as ds-tens]
             [tech.v3.dataset.modelling :as ds-mod]
@@ -147,6 +148,17 @@
       (= objective "multi:softprob")))
 
 
+(def hyperparameters
+  {:subsample (ml-gs/linear 0.7 1.0 3)
+   :scale-pos-weight (ml-gs/linear 0.7 1.31 6)
+   :max-depth (ml-gs/linear 1 10 10 :int64)
+   :lambda (ml-gs/linear 0.01 0.31 30)
+   :gamma (ml-gs/linear 0.001 1 10)
+   :eta (ml-gs/linear 0 1 10)
+   :round (ml-gs/linear 5 46 5 :int64)
+   :alpha (ml-gs/linear 0.01 0.31 30)})
+
+
 (defn train
   [feature-ds label-ds options]
   ;;XGBoost uses all cores so serialization here avoids over subscribing
@@ -244,8 +256,10 @@ c/xgboost4j/java/XGBoost.java#L208"))
       (-> (ds/rename-columns predict-ds (-> (get-in target-categorical-maps
                                                     [target-cname :lookup-table])
                                             (set/map-invert)))
+          (ds/update-columnwise :all vary-meta assoc :column-type :probability-distribution)
           (vary-meta assoc :model-type :classification))
       (-> (ds/rename-columns predict-ds {0 target-cname})
+          (ds/update-columnwise :all vary-meta assoc :column-type :prediction)
           (vary-meta assoc :model-type :regression)))))
 
 
@@ -275,13 +289,12 @@ c/xgboost4j/java/XGBoost.java#L208"))
            (ds/->>dataset))))
 
 
-(->> (concat [:regression :classification]
-             (keys objective-types))
-     (map (fn [objective]
-            (ml/define-model! (keyword "xgboost" (name objective))
-              train predict {:thaw-fn thaw-model
-                             :explain-fn explain})))
-     (dorun))
+(doseq [objective (concat [:regression :classification]
+                          (keys objective-types))]
+  (ml/define-model! (keyword "xgboost" (name objective))
+    train predict {:thaw-fn thaw-model
+                   :explain-fn explain
+                   :hyperparameters hyperparameters}))
 
 
 (comment
@@ -291,11 +304,60 @@ c/xgboost4j/java/XGBoost.java#L208"))
                (ds/categorical->number cf/categorical)
                (ds-mod/set-inference-target "species")))
   (def feature-ds (cf/feature ds))
-  (def target-ds (cf/target ds))
-  (def trained (ml/train ds {:model-type :xgboost/classification}))
-  (def predictions (ml/predict feature-ds trained))
-  (def rev-mapped (ds-mod/probability-distributions->label-column predictions "species"))
+  (def split-data (ds-mod/train-test-split ds))
+  (def train-ds (:train-ds split-data))
+  (def test-ds (:test-ds split-data))
+  (def model (ml/train train-ds {:model-type :xgboost/classification}))
+  (def predictions (ml/predict test-ds model))
   (require '[tech.v3.ml.loss :as loss])
-  (loss/classification-accuracy (rev-mapped "species") (src-ds "species"))
+  (require '[tech.v3.dataset.categorical :as ds-cat])
 
+  (loss/classification-accuracy (predictions "species")
+                                ((ds-cat/reverse-map-categorical-xforms test-ds)
+                                 "species"))
+  ;;0.93333
+
+  (def titanic (-> (ds/->dataset "/home/chrisn/Downloads/titanic.csv")
+                   (ds/drop-columns ["Name"])
+                   (ds/update-column "Survived" (fn [col]
+                                                  (dtype/emap #(if (== 1 (long %))
+                                                                 "survived"
+                                                                 "drowned")
+                                                              :string col)))
+                   (ds-mod/set-inference-target "Survived")))
+
+  (def titanic-numbers (ds/categorical->number titanic cf/categorical))
+
+  (def split-data (ds-mod/train-test-split titanic-numbers))
+  (def train-ds (:train-ds split-data))
+  (def test-ds (:test-ds split-data))
+  (def model (ml/train train-ds {:model-type :xgboost/classification}))
+  (def predictions (ml/predict test-ds model))
+
+  (loss/classification-accuracy (predictions "Survived")
+                                ((ds-cat/reverse-map-categorical-xforms test-ds)
+                                 "Survived"))
+  ;;0.8195488721804511
+  ;;0.8308270676691729
+  (require '[tech.v3.ml.gridsearch :as ml-gs])
+  (def opt-map (merge {:model-type :xgboost/classification}
+                      hyperparameters))
+  (def options-sequence (take 200  (ml-gs/sobol-gridsearch opt-map)))
+
+
+  (defn test-options
+    [options]
+    (let [model (ml/train train-ds options)
+          predictions (ml/predict test-ds model)
+          loss (loss/classification-loss (predictions "Survived")
+                                         ((ds-cat/reverse-map-categorical-xforms test-ds)
+                                          "Survived"))]
+      (assoc model :loss loss)))
+
+
+  (def models
+    (->> (map test-options options-sequence)
+         (sort-by :loss)
+         (take 10)
+         (map #(select-keys % [:loss :options]))))
   )
