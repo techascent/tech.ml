@@ -1,6 +1,7 @@
 (ns tech.v3.libs.smile.classification
   "Namespace to require to enable a set of smile classification models."
   (:require [tech.v3.datatype :as dtype]
+            [tech.v3.datatype.protocols :as dtype-proto]
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.utils :as ds-utils]
             [tech.v3.tensor :as dtt]
@@ -11,32 +12,41 @@
   (:import [smile.classification SoftClassifier AdaBoost LogisticRegression]
            [smile.data.formula Formula]
            [smile.data DataFrame]
-           [java.util Properties List]))
+           [java.util Properties List]
+           [tech.v3.datatype ObjectReader]))
 
 
 (set! *warn-on-reflection* true)
 
 (defn- tuple-predict-posterior
   [^SoftClassifier model ds options n-labels]
-  (let [df (ds/dataset->smile-dataframe ds)]
+  (let [df (ds/dataset->smile-dataframe ds)
+        n-rows (ds/row-count ds)]
     (smile-proto/initialize-model-formula! model ds)
-    (dtype/make-reader
-     :object
-     (ds/row-count ds)
-     (let [posterior (double-array n-labels)]
-       (.predict model (.get df idx) posterior)
-       posterior))))
+    (reify
+      dtype-proto/PShape
+      (shape [rdr] [n-rows n-labels])
+      ObjectReader
+      (lsize [rdr] n-rows)
+      (readObject [rdr idx]
+        (let [posterior (double-array n-labels)]
+          (.predict model (.get df idx) posterior)
+          posterior)))))
 
 
 (defn- double-array-predict-posterior
   [^SoftClassifier model ds options n-labels]
-  (let [value-reader (ds/value-reader ds)]
-    (dtype/make-reader
-     :object
-     (ds/row-count ds)
-     (let [posterior (double-array n-labels)]
-       (.predict model (double-array (value-reader idx)) posterior)
-       posterior))))
+  (let [value-reader (ds/value-reader ds)
+        n-rows (ds/row-count ds)]
+    (reify
+      dtype-proto/PShape
+      (shape [rdr] [n-rows n-labels])
+      ObjectReader
+      (lsize [rdr] n-rows)
+      (readObject [rdr idx]
+        (let [posterior (double-array n-labels)]
+          (.predict model (double-array (value-reader idx)) posterior)
+          posterior)))))
 
 
 (def ^:private classifier-metadata
@@ -316,9 +326,11 @@
                         (model/options->model-type options))
         target-colname (first target-columns)
         n-labels (-> (get target-categorical-maps target-colname)
+                     :lookup-table
                      count)
-        predictor (:predictor entry-metadata)]
-    (-> (predictor thawed-model feature-ds options n-labels)
+        predictor (:predictor entry-metadata)
+        predictions (predictor thawed-model feature-ds options n-labels)]
+    (-> predictions
         (dtt/->tensor)
         (model/finalize-classification (ds/row-count feature-ds)
                                        target-colname

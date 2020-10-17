@@ -10,7 +10,7 @@ Library to encapsulate a few core concepts of techascent system.
 
 
 
-## TODO - Simple Examples Here of Regression/Classification
+## Simple Examples Regression/Classification
 
 
 ### Concluding

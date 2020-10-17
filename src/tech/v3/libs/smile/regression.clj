@@ -225,10 +225,8 @@
         formula (smile-proto/make-formula
                  (ds-utils/column-safe-name (first target-colnames))
                  (map ds-utils/column-safe-name feature-colnames))
-        _ (println formula)
         full-ds (merge feature-ds label-ds)
         data (ds/dataset->smile-dataframe full-ds)
-        _ (println data)
         properties (smile-proto/options->properties entry-metadata full-ds options)
         ctor (:constructor entry-metadata)
         model (ctor formula data properties)]
