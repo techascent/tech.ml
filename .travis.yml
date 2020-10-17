@@ -8,5 +8,3 @@ addons:
   apt:
     packages:
     - libopenblas-dev
-before_script:
- - ./scripts/get-data.sh
