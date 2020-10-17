@@ -1,6 +1,10 @@
 (ns tech.v3.ml.gridsearch
-  "https://en.wikipedia.org/wiki/Sobol_sequence
-  Used to gridsearch efficiently without getting fancy."
+  "Gridsearching as defined by create a map with gridsearch definitions
+  for its values and then gridsearching which produces a sequence of full
+  defined maps.
+
+
+  The initial default implementation uses the sobol sequence."
   (:require [tech.v3.datatype.errors :as errors]
             [tech.v3.datatype.casting :as casting])
   (:import [org.apache.commons.math3.random SobolSequenceGenerator]))
@@ -39,7 +43,10 @@
 
 
 (defn linear
-  "Gridsearch a linear space of values"
+  "Create a gridsearch definition which does a linear search.
+
+  * res-dtype-or-space map be either a datatype keyword or a vector
+    of categorical values."
   ([start end n-steps res-dtype-or-space]
    (let [start (double start)
          end (double end)
@@ -56,14 +63,13 @@
 
 
 (defn categorical
-  "Gridsearch through a list of categorical values"
+  "Given a vector a categorical values create a gridsearch definition."
   [value-vec]
   (let [n-elems (count value-vec)]
     (linear 0 (dec n-elems) n-elems value-vec)))
 
 
 (defmethod project :linear
-  ;;Value has already been projected into 0->n-steps integer space
   [{:keys [start end n-steps result-space]} value]
   (let [value (long value)
         start (double start)
@@ -103,6 +109,31 @@
 
 
 (defn sobol-gridsearch
+  "Given an map of key->values where some of the values are gridsearch definitions
+  produce a sequence of fully defined maps.
+
+```clojure
+user> (require '[tech.v3.ml.gridsearch :as ml-gs])
+nil
+user> (def opt-map  {:a (ml-gs/categorical [:a :b :c])
+                     :b (ml-gs/linear 0.01 1 10)
+                     :c :not-searched})
+user> opt-map
+{:a
+ {:tech.v3.ml.gridsearch/type :linear,
+  :start 0.0,
+  :end 2.0,
+  :n-steps 3,
+  :result-space [:a :b :c]}
+  ...
+
+user> (ml-gs/sobol-gridsearch opt-map)
+({:a :b, :b 0.56, :c :not-searched}
+ {:a :c, :b 0.22999999999999998, :c :not-searched}
+ {:a :b, :b 0.78, :c :not-searched}
+...
+  ```
+  "
   ([opt-map start-idx]
    (let [axis (map->axis opt-map)]
      (if (seq axis)
