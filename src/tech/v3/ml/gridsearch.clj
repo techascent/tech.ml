@@ -133,7 +133,7 @@ user> (ml-gs/sobol-gridsearch opt-map)
  {:a :c, :b 0.22999999999999998, :c :not-searched}
  {:a :b, :b 0.78, :c :not-searched}
 ...
-  ```
+```
   "
   ([opt-map start-idx]
    (let [axis (map->axis opt-map)]

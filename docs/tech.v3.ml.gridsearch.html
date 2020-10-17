@@ -5,5 +5,23 @@
 <ul>
   <li>res-dtype-or-space map be either a datatype keyword or a vector  of categorical values.</li>
 </ul></div></div><div class="src-link"><a href="https://github.com/techascent/tech.ml/blob/master/src/tech/v3/ml/gridsearch.clj#L45">view source</a></div></div><div class="public anchor" id="var-sobol-gridsearch"><h3>sobol-gridsearch</h3><div class="usage"><code>(sobol-gridsearch opt-map start-idx)</code><code>(sobol-gridsearch opt-map)</code></div><div class="doc"><div class="markdown"><p>Given an map of key-&gt;values where some of the values are gridsearch definitions  produce a sequence of fully defined maps.</p>
-<p>```clojure user&gt; (require ’[tech.v3.ml.gridsearch :as ml-gs]) nil user&gt; (def opt-map {:a (ml-gs/categorical [:a :b :c])  :b (ml-gs/linear 0.01 1 10)  :c :not-searched}) user&gt; opt-map {:a  {:tech.v3.ml.gridsearch/type :linear,  :start 0.0,  :end 2.0,  :n-steps 3,  :result-space [:a :b :c]}  …</p>
-<p>user&gt; (ml-gs/sobol-gridsearch opt-map) ({:a :b, :b 0.56, :c :not-searched}  {:a :c, :b 0.22999999999999998, :c :not-searched}  {:a :b, :b 0.78, :c :not-searched} …  ```</p></div></div><div class="src-link"><a href="https://github.com/techascent/tech.ml/blob/master/src/tech/v3/ml/gridsearch.clj#L111">view source</a></div></div></div></body></html>
+<pre><code class="clojure">user&gt; (require '[tech.v3.ml.gridsearch :as ml-gs])
+nil
+user&gt; (def opt-map  {:a (ml-gs/categorical [:a :b :c])
+                     :b (ml-gs/linear 0.01 1 10)
+                     :c :not-searched})
+user&gt; opt-map
+{:a
+ {:tech.v3.ml.gridsearch/type :linear,
+  :start 0.0,
+  :end 2.0,
+  :n-steps 3,
+  :result-space [:a :b :c]}
+  ...
+
+user&gt; (ml-gs/sobol-gridsearch opt-map)
+({:a :b, :b 0.56, :c :not-searched}
+ {:a :c, :b 0.22999999999999998, :c :not-searched}
+ {:a :b, :b 0.78, :c :not-searched}
+...
+</code></pre></div></div><div class="src-link"><a href="https://github.com/techascent/tech.ml/blob/master/src/tech/v3/ml/gridsearch.clj#L111">view source</a></div></div></div></body></html>
