@@ -8,3 +8,5 @@ addons:
   apt:
     packages:
     - libopenblas-dev
+cache:
+  directories: "$HOME/.m2"
