@@ -310,11 +310,10 @@ c/xgboost4j/java/XGBoost.java#L208"))
   (require '[tech.v3.dataset.categorical :as ds-cat])
 
   (loss/classification-accuracy (predictions "species")
-                                ((ds-cat/reverse-map-categorical-xforms test-ds)
-                                 "species"))
+                                (test-ds "species"))
   ;;0.93333
 
-  (def titanic (-> (ds/->dataset "/home/chrisn/Downloads/titanic.csv")
+  (def titanic (-> (ds/->dataset "test/data/titanic.csv")
                    (ds/drop-columns ["Name"])
                    (ds/update-column "Survived" (fn [col]
                                                   (dtype/emap #(if (== 1 (long %))
@@ -332,8 +331,7 @@ c/xgboost4j/java/XGBoost.java#L208"))
   (def predictions (ml/predict test-ds model))
 
   (loss/classification-accuracy (predictions "Survived")
-                                ((ds-cat/reverse-map-categorical-xforms test-ds)
-                                 "Survived"))
+                                (test-ds "Survived"))
   ;;0.8195488721804511
   ;;0.8308270676691729
   (require '[tech.v3.ml.gridsearch :as ml-gs])
@@ -347,8 +345,7 @@ c/xgboost4j/java/XGBoost.java#L208"))
     (let [model (ml/train train-ds options)
           predictions (ml/predict test-ds model)
           loss (loss/classification-loss (predictions "Survived")
-                                         ((ds-cat/reverse-map-categorical-xforms test-ds)
-                                          "Survived"))]
+                                         (test-ds "Survived"))]
       (assoc model :loss loss)))
 
 

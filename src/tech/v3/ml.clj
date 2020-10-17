@@ -102,8 +102,10 @@ see tech.v3.dataset.modelling/set-inference-target")
                             thawed-model
                             model)]
     (if (= :classification (:model-type (meta pred-ds)))
-      (-> (ds-mod/probability-distributions->label-column pred-ds (first label-columns))
-          (ds/update-column (first label-columns) #(vary-meta % assoc :column-type :prediction)))
+      (-> (ds-mod/probability-distributions->label-column
+           pred-ds (first label-columns))
+          (ds/update-column (first label-columns)
+                            #(vary-meta % assoc :column-type :prediction)))
       pred-ds)))
 
 
