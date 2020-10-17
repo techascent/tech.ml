@@ -147,7 +147,7 @@ user> (ml-gs/sobol-gridsearch opt-map)
                                (assoc-in opt-map axis (project element seq-elem)))
                              opt-map
                              (map vector seq-data axis))))))
-       opt-map)))
+       [opt-map])))
   ([opt-map]
    (sobol-gridsearch opt-map 0)))
 

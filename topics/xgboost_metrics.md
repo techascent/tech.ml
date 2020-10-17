@@ -11,17 +11,16 @@ dataset to show how to use both systems.
 
 Our goal is to end up with float64 columns with no missing values.  This is a fast
 rough pass and isn't anywhere near ideal.  For instance many of the string columns
-should be encoded to preserve semantic order.  For a more thorough treatment
-of this dataset please see our [ames tutorial](https://github.com/cnuernber/ames-house-prices/blob/master/ames-housing-prices-clojure.md).
+should be encoded to preserve semantic order.  Regardless this will show some minimal
+processing and the general pathway in order to do simple machine learning.
 
 ```clojure
 
-user> (require '[tech.ml.dataset :as ds])
+user> (require '[tech.v3.dataset :as ds])
 nil
-user> (require '[tech.ml.dataset.column :as ds-col])
-nil
-user> (def ames-ds (ds/->dataset "../tech.ml.dataset/data/ames-house-prices/train.csv.gz"))
-#'user/ames-ds
+user> (def ames (ds/->dataset "https://github.com/techascent/tech.ml/blob/dataset-5.X/test/data/train.csv.gz?raw=true"
+                              {:file-type :csv :gzipped? true}))
+#'user/ames
 user> (ds/columns-with-missing-seq ames-ds)
 ({:column-name "LotFrontage", :missing-count 259}
  {:column-name "Alley", :missing-count 1369}
@@ -42,38 +41,26 @@ user> (ds/columns-with-missing-seq ames-ds)
  {:column-name "PoolQC", :missing-count 1453}
  {:column-name "Fence", :missing-count 1179}
  {:column-name "MiscFeature", :missing-count 1406})
-user> (->> ames-ds
-           (map dtype/get-datatype)
-           frequencies)
-{:int32 38, :string 42, :boolean 1}
-user> (require '[tech.ml.dataset.pipeline :as ds-pipe])
+user> (->> (map (comp :datatype meta) (vals ames))
+           (frequencies))
+{:int16 36, :string 42, :int32 2, :boolean 1}
+user> (require '[tech.v3.dataset.column-filters :as cf])
 nil
-user> (require '[tech.ml.dataset.pipeline.column-filters :as col-filters])
+user> (def ames-missing-1 (ds/replace-missing-value ames cf/string "NA"))
+#'user/ames-missing-1
+user> (ds/columns-with-missing-seq ames-missing-1)
+({:column-name "LotFrontage", :missing-count 259}
+ {:column-name "MasVnrArea", :missing-count 8}
+ {:column-name "GarageYrBlt", :missing-count 81})
+user> (def ames-missing-2 (ds/replace-missing-value ames-missing-1 :all 0))
+#'user/ames-missing-2
+user> (ds/columns-with-missing-seq ames-missing-2)
 nil
-user> (require '[tech.v2.datatype.functional :as dfn])
-nil
-user> (col-filters/missing? ames-ds)
-("Id"
- "MSSubClass"
- "MSZoning"
- "LotFrontage"
- "LotArea"
- "Street"
- ...)
-user> (def ames-processed
-        (-> ames-ds
-            (ds-pipe/string->number)
-            (ds-pipe/->datatype)
-			(ds-pipe/replace-missing col-filters/missing? dfn/mean)
-            (ds/remove-column "Id")
-            (ds/set-inference-target "SalePrice")))
-#'user/ames-processed
-user> (->> ames-processed
-           (map dtype/get-datatype)
-           frequencies)
-{:float64 80}
-user> (ds/columns-with-missing-seq ames-processed)
-nil
+user> (def all-numeric (ds/categorical->number ames-missing-2 cf/string))
+#'user/all-numeric
+user> (->> (map (comp :datatype meta) (vals all-numeric))
+           (frequencies))
+{:int16 36, :float64 42, :int32 2, :boolean 1}
 ```
 
 ## Training with XGBoost
@@ -81,16 +68,15 @@ nil
 
 Since we set the inference target on the dataset, we can quickly train a model.
 ```clojure
-user> (require '[tech.ml :as ml])
+user> (require '[tech.v3.ml :as ml])
 nil
-user> (require '[tech.libs.xgboost])
+user> (require '[tech.v3.libs.xgboost])
 nil
-user> (def model (ml/train {:model-type :xgboost/regression} ames-processed))
-#'user/model
+user> (require '[tech.v3.dataset.modelling :as ds-mod])
+nil
 ```
 
-But since we have no validation set we can't really say how good it is.  So we
-split the dataset up into train/test datasets where we can train on one dataset
+We split the dataset up into train/test datasets where we can train on one dataset
 and test on another.
 
 
@@ -100,45 +86,79 @@ user> (def train-test-split (ds/->train-test-split ames-processed))
 user> (def model (ml/train {:model-type :xgboost/regression}
                            (:train-ds train-test-split)))
 #'user/model
+user> (def prediction (ml/predict (:test-ds train-test-split) model))
+#'user/prediction
+user> prediction
+:_unnamed [438 1]:
+
+| SalePrice |
+|-----------|
+| 1.904E+05 |
+| 2.000E+05 |
+| 1.944E+05 |
+| 2.392E+05 |
+| 1.766E+05 |
+...
+user> (meta prediction)
+{:name :_unnamed, :model-type :regression}
 ```
 
 Now we can say something about how good the model is.  Let's analyze this with
 mean average error:
 
 ```clojure
-user> (require '[tech.ml.loss :as loss])
+user> (require '[tech.v3.ml.loss :as loss])
 nil
-user> (loss/mae (ml/predict model (:test-ds train-test-split))
-                (ds/labels (:test-ds train-test-split)))
-
-18214.909737086185
+user> (loss/mae (prediction "SalePrice")
+                ((:test-ds train-test-split) "SalePrice"))
+18439.617499643264
 ```
 
 What is going on?  Well, one question we want to to ask is what variables is xgboost
 using to decide how to predict SalePrice.
 
 ```clojure
-user> (ml/explain-model model)
-{"gain"
- (["OverallQual" 2.5181549976236365E11]
-  ["GarageCars" 1.4100606415566666E11]
-  ["BsmtQual" 3.9808249456E10]
-  ["GrLivArea" 3.41621977572E10]
-  ["KitchenQual" 2.4555688343714287E10]
-  ["TotRmsAbvGrd" 2.12383297232E10]
-  ["ExterQual" 1.2918698357333334E10]
-  ["TotalBsmtSF" 1.1815750909642857E10]
-  ["KitchenAbvGr" 9.67573504E9]
-  ["1stFlrSF" 9.35139666304E9]
-  ["BsmtFinSF1" 6.262918230857142E9]
-  ...)}
+
+user> (ml/explain model)
+_unnamed [70 3]:
+| :importance-type |     :colname |          :gain |
+|------------------|--------------|----------------|
+|             gain |  OverallQual | 2.63303470E+11 |
+|             gain |  KitchenQual | 5.15596265E+10 |
+|             gain | TotRmsAbvGrd | 4.91487037E+10 |
+|             gain |    GrLivArea | 3.93336045E+10 |
+|             gain |   GarageCars | 3.66395853E+10 |
+|             gain |   BsmtFinSF1 | 1.28130489E+10 |
+|             gain |  TotalBsmtSF | 1.04417586E+10 |
+|             gain |     BsmtQual | 8.16779754E+09 |
+|             gain |     MSZoning | 7.97729807E+09 |
+|             gain |     1stFlrSF | 6.55107315E+09 |
+|             gain | BsmtExposure | 6.07410704E+09 |
+|             gain |     2ndFlrSF | 5.68743133E+09 |
+|             gain |        Alley | 5.56387533E+09 |
+|             gain |   Fireplaces | 4.28944688E+09 |
+|             gain |    YearBuilt | 3.90289328E+09 |
+|             gain |  LotFrontage | 3.21221797E+09 |
+|             gain | GarageFinish | 3.10737368E+09 |
+|             gain | YearRemodAdd | 3.08412712E+09 |
+|             gain |  GarageYrBlt | 3.01600398E+09 |
+|             gain |     SaleType | 2.76226739E+09 |
+|             gain |    LandSlope | 2.70233190E+09 |
+|             gain |      LotArea | 2.42620203E+09 |
+|             gain | BsmtFinType2 | 2.29969101E+09 |
+|             gain |   Foundation | 2.27973530E+09 |
+|             gain | BsmtFullBath | 2.17456462E+09 |
 ```
 
 These seem logical.  In fact, it would appear that these columns are in this case
 somewhat correlated with the pearson correlation table for sale price:
 
 ```clojure
-(ds/correlation-table ames-processed :colname-seq ["SalePrice"])
+user> (require '[tech.v3.dataset.math :as ds-math])
+nil
+user> (ds-math/correlation-table all-numeric :colname-seq ["SalePrice"])
+WARNING - excluding non-numeric columns:
+ [CentralAir]
 {"SalePrice"
  (["SalePrice" 1.0]
   ["OverallQual" 0.7909816005838052]
@@ -147,11 +167,6 @@ somewhat correlated with the pearson correlation table for sale price:
   ["GarageCars" 0.6404091972583521]
   ["GarageArea" 0.6234314389183621]
   ["KitchenQual" 0.6192349321077227]
-  ["TotalBsmtSF" 0.6135805515591942]
-  ["BsmtQual" 0.6104442034754758]
-  ["1stFlrSF" 0.6058521846919152]
-  ["FullBath" 0.5606637627484452]
-  ["TotRmsAbvGrd" 0.5337231555820283]
   ...)}
 ```
 
@@ -164,63 +179,88 @@ We first build out an option map where some of the keys map to gridsearch comman
 The xgboost model can fill out gridsearch options:
 
 ```clojure
-user> (def model-options {:model-type :xgboost/regression})
-#'user/model-options
-user> (ml/auto-gridsearch-options model-options)
-{:subsample #function[tech.ml.gridsearch/make-gridsearch-fn/fn--44403],
- :scale-pos-weight #function[tech.ml.gridsearch/make-gridsearch-fn/fn--44403],
- :max-depth #function[clojure.core/comp/fn--5807],
- :lambda #function[tech.ml.gridsearch/make-gridsearch-fn/fn--44403],
- :gamma #function[tech.ml.gridsearch/make-gridsearch-fn/fn--44403],
- :eta #function[tech.ml.gridsearch/make-gridsearch-fn/fn--44403],
- :alpha #function[tech.ml.gridsearch/make-gridsearch-fn/fn--44403],
- :model-type :xgboost/regression}
+user> (ml/hyperparameters :xgboost/regression)
+{:subsample
+ {:tech.v3.ml.gridsearch/type :linear,
+  :start 0.7,
+  :end 1.0,
+  :n-steps 3,
+  :result-space :float64},
+ :scale-pos-weight
+ {:tech.v3.ml.gridsearch/type :linear,
+  :start 0.7,
+  :end 1.31,
+  :n-steps 6,
+  :result-space :float64},
+ :max-depth
+ {:tech.v3.ml.gridsearch/type :linear,
+  :start 1.0,
+  :end 10.0,
+  :n-steps 10,
+  :result-space :int64},
 ```
 
 Once we have a map where some of the keys map to gridsearch entries, we can use the
 automatic gridsearch facility in tech.ml to search over the space:
 
 ```clojure
-user> (def gridsearch (ml/gridsearch (ml/auto-gridsearch-options
-                                      {:model-type :xgboost/regression})
-                                     loss/mae (:train-ds train-test-split)))
-07:49:40.244 [nRepl-session-1b8515ca-e7bf-4cae-9f3d-310d1c86239e] INFO  tech.ml - Gridsearching: {:top-n 5, :gridsearch-depth 50, :k-fold 5}
+user> (def gridsearchable-options (merge {:model-type :xgboost/regression} (ml/hyperparameters :xgboost/regression)))
+#'user/gridsearchable-options
+user> (def option-seq (take 100 (gs/sobol-gridsearch gridsearchable-options)))
+#'user/option-seq
+user> (take 5 option-seq)
+({:subsample 0.85,
+  :scale-pos-weight 1.066,
+  :lambda 0.16517241379310346,
+  :round 25,
+  :model-type :xgboost/regression,
+  :gamma 0.556,
+  :alpha 0.16517241379310346,
+  :max-depth 6,
+  :eta 0.5555555555555556}
+ {:subsample 1.0,
+  :scale-pos-weight 0.822,
+  :lambda 0.08241379310344828,
+  :round 15,
+  :model-type :xgboost/regression,
+  :gamma 0.778,
+  :alpha 0.23758620689655172,
+  :max-depth 3,
+  :eta 0.7777777777777778}
+...
+user> (defn test-options
+        [options]
+        (let [model (ml/train (:train-ds train-test-split) options)
+              prediction (ml/predict (:test-ds train-test-split) model)]
+          (assoc model :loss (loss/mae (prediction "SalePrice")
+                                       ((:test-ds train-test-split) "SalePrice")))))
 
-#'user/gridsearch
-
-user> (count gridsearch)
-5
-user> (keys (first gridsearch))
-(:total-train-time
- :predict-time
- :id
- :options
- :loss
- :train-time
- :total-predict-time
- :average-loss
- :model)
-user> (map :average-loss gridsearch)
-(17689.661645983007
- 18249.499280650056
- 18354.93181460924
- 19183.83188931946
- 19687.72537490944)
+#'user/test-options
+user> (def search-results
+        (->> option-seq
+             (map test-options)
+             (sort-by :loss)
+             (take 10)))
+#'user/search-results
+user> (map :loss search-results)
+(17407.003585188355
+ 17640.71050049943
+ 17647.76534853025
+ 17656.68644763128
+ 17748.619631135844
+ 17873.145191210046
+ 17911.20817280251
+ 18073.004726740866
+ 18221.194652539954
+ 18305.031258918378)
 ```
 
 Note that gridsearching saves out the option map so we can see what produced the best
 options or perform a new sub-gridsearch given ranges built from the return value
-of the previous gridsearch.  We remove keys that are added into the options by the
-dataset system to get a cleaner map for presentation:
+of the previous gridsearch.
 
 ```clojure
-
-user> (dissoc (:options (first gridsearch))
-              :feature-columns
-              :label-columns
-              :label-map
-              :column-map
-              :dataset-shape)
+user> (:options (first gridsearch))
 {:subsample 0.690625,
  :scale-pos-weight 1.346875,
  :lambda 0.6940625,
@@ -237,12 +277,7 @@ the various options mean
 will just use the best options for now:
 
 ```clojure
-user> (def model-options (dissoc (:options (first gridsearch))
-                                 :feature-columns
-                                 :label-columns
-                                 :label-map
-                                 :column-map
-                                 :dataset-shape))
+user> (def model-options (:options (first search-results)))
 #'user/model-options
 ```
 
@@ -250,22 +285,40 @@ user> (def model-options (dissoc (:options (first gridsearch))
 
 Metrics will help us see if the model itself is overtraining.  When you setup
 xgboost options with one or more `watch` datasets, it will dump out the metrics
-generated during training to a map of the same name under the model:
+generated during training to a map of the same name under the [:model-data :metrics]:
 
 ```clojure
-user> (def model (ml/train (assoc model-options
+user> (def model (ml/train (:train-ds train-test-split)
+                           (assoc model-options
                                   :watches {:test-ds (:test-ds train-test-split)}
-                                  :eval-metric "mae")
-                           (:train-ds train-test-split)))
+                                  :eval-metric "mae")))
 #'user/model
-user> (get-in model [:model :metrics :test-ds])
-[155104.42, 131292.08, 111617.01, 94516.586, 80522.01, 68706.055, 58783.195,
- 50716.758, 43895.25, 38271.21, 33724.87, 30095.79, 27317.229, 25235.572,
- 23583.646, 22291.254, 21304.0, 20369.557, 19870.934, 19353.86, 19033.955,
- 18718.123, 18505.295, 18273.787, 18161.504]
-user> (loss/mae (ml/predict model (:test-ds train-test-split))
-                (ds/labels (:test-ds train-test-split)))
-18161.504842679795
+user> (get-in model [:model :metrics])
+nil
+user> (get-in model [:model-data :metrics])
+:metrics [35 1]:
+
+|        :test-ds |
+|-----------------|
+| 164215.03125000 |
+| 145998.57812500 |
+| 129672.75000000 |
+| 115247.78906250 |
+| 102420.60156250 |
+...
+user> (ds/tail (get-in model [:model-data :metrics]))
+:metrics [5 1]:
+
+|       :test-ds |
+|----------------|
+| 17594.75390625 |
+| 17569.87109375 |
+| 17500.19921875 |
+| 17438.49609375 |
+| 17407.00390625 |
+user> (loss/mae ((ml/predict (:test-ds train-test-split) model) "SalePrice")
+                ((:test-ds train-test-split) "SalePrice"))
+17407.003585188355
 ```
 
 Our loss lines up with our metrics.  In this case it appears the default number of
@@ -274,54 +327,76 @@ instance, we could just as easily chosen to train more rounds:
 
 
 ```clojure
-user> (def model (ml/train (assoc model-options
+user> (def model (ml/train (:train-ds train-test-split)
+                           (assoc model-options
                                   :watches {:test-ds (:test-ds train-test-split)}
                                   :eval-metric "mae"
-                                  :round 50)
-                           (:train-ds train-test-split)))
-#'user/model
-user> (get-in model [:model :metrics :test-ds])
-[155104.42, 131292.08, 111617.016, 94516.59, 80522.01, 68706.06, 58783.195,
- 50716.758, 43895.254, 38271.21, 33724.87, 30095.79, 27317.227, 25235.572,
- 23583.648, 22291.254, 21304.0, 20369.557, 19870.934, 19353.86, 19033.957,
- 18718.125, 18505.295, 18273.787, 18161.506, 18063.521, 17976.748, 17840.676,
- 17758.293, 17679.395, 17644.885, 17611.982, 17594.037, 17564.527, 17559.14,
- 17526.754, 17505.686, 17478.936, 17479.887, 17460.365, 17476.04, 17463.885,
- 17430.012, 17414.898, 17416.896, 17407.037, 17404.498, 17401.482, 17402.996,
- 17390.938]
+                                  :round 100)))
+user> (ds/tail (get-in model [:model-data :metrics]) 20)
+:metrics [20 1]:
+
+|       :test-ds |
+|----------------|
+| 17170.25976563 |
+| 17169.70117188 |
+| 17169.28906250 |
+| 17170.50585938 |
+| 17170.07226563 |
+| 17168.27929688 |
+| 17168.89062500 |
+| 17173.72851563 |
+| 17179.31640625 |
+| 17177.67773438 |
+| 17175.00000000 |
+| 17172.91406250 |
+| 17170.39257813 |
+| 17166.40039063 |
+| 17166.11132813 |
+| 17162.64648438 |
+| 17161.11328125 |
+| 17161.10351563 |
+| 17157.91796875 |
+| 17159.54492188 |
 ```
 
 Now we see a very common case.  XGBoost is overtraining; the error on the validation
-set is going up while the model continues to train further.  We can make this
+set not improving while the model continues to train further.  We can make this
 clearer by add in the training dataset to the watches map:
 
 ```clojure
-user> (def model (ml/train (assoc model-options
-                                  :watches {:test-ds (:test-ds train-test-split)
-                                            :train-ds (:train-ds train-test-split)}
+user> (def model (ml/train (:train-ds train-test-split)
+                           (assoc model-options
+                                  :watches train-test-split
                                   :eval-metric "mae"
-                                  :round 100)
-                           (:train-ds train-test-split)))
+                                  :round 100)))
 #'user/model
-user> (-> (ds/name-values-seq->dataset (get-in model [:model :metrics]))
-          (ds/select :all (range 80 100)))
-_unnamed [20 2]:
+user> (ds/tail (get-in model [:model-data :metrics]) 20)
+:metrics [20 2]:
 
-|  :test-ds | :train-ds |
-|-----------+-----------|
-| 17354.963 |   130.350 |
-| 17352.686 |   122.937 |
-| 17351.160 |   117.777 |
-| 17350.686 |   109.455 |
-| 17350.396 |   103.957 |
-| 17351.082 |    99.027 |
-| 17351.402 |    93.890 |
-| 17351.469 |    88.454 |
-| 17352.172 |    83.471 |
+|    :train-ds |       :test-ds |
+|--------------|----------------|
+| 833.36267090 | 17170.25781250 |
+| 802.52020264 | 17169.70117188 |
+| 777.55834961 | 17169.28906250 |
+| 742.71563721 | 17170.50585938 |
+| 712.96319580 | 17170.07226563 |
+| 697.16204834 | 17168.27734375 |
+| 668.31335449 | 17168.89062500 |
+| 636.66845703 | 17173.72851563 |
+| 606.96020508 | 17179.31640625 |
+| 583.48291016 | 17177.67773438 |
+| 564.89141846 | 17175.00000000 |
+| 542.37860107 | 17172.91406250 |
+| 529.37158203 | 17170.39257813 |
+| 515.00244141 | 17166.40039063 |
+| 494.43447876 | 17166.11132813 |
+| 473.96432495 | 17162.64648438 |
+| 456.32290649 | 17161.11328125 |
+| 448.66156006 | 17161.10351563 |
+| 439.60934448 | 17157.91796875 |
+| 425.91204834 | 17159.54492188 |
 ...
 ```
-
-I selected the last 20 rows as those are the ones that show the overtraining somewhat.
 
 
 ## Early Stopping
@@ -331,15 +406,13 @@ Using the built-in XGBoost early stopping we can avoid overtraining:
 
 
 ```clojure
-
-user> (def model (ml/train (assoc model-options
-                                  :watches {:test-ds (:test-ds train-test-split)
-                                            :train-ds (:train-ds train-test-split)}
+user> (def model (ml/train (:train-ds train-test-split)
+                           (assoc model-options
+                                  :watches train-test-split
                                   :eval-metric "mae"
                                   :round 100
-                                  :early-stopping-round 4)
-                           (:train-ds train-test-split)))
-08:06:07.652 [nRepl-session-1b8515ca-e7bf-4cae-9f3d-310d1c86239e] WARN  tech.libs.xgboost - Early stopping indicated but watches has undefined iteration order.
+                                  :early-stopping-round 4)))
+09:34:35.063 [nREPL-session-d7c6e5a6-cc96-42d5-8435-99f1f16b6d1f] WARN tech.v3.libs.xgboost - Early stopping indicated but watches has undefined iteration order.
 Early stopping will always use the 'last' of the watches as defined by the iteration
 order of the watches map.  Consider using a java.util.LinkedHashMap for watches.
 https://github.com/dmlc/xgboost/blob/master/jvm-packages/xgboost4j/src/main/java/ml/dml
@@ -353,105 +426,76 @@ one watch.
 
 
 ```clojure
-
 user> (import '[java.util LinkedHashMap])
 java.util.LinkedHashMap
 user> (def watches (doto (LinkedHashMap.)
                      (.put :train-ds (:train-ds train-test-split))
                      (.put :test-ds (:test-ds train-test-split))))
 #'user/watches
-
-user> (def model (ml/train (assoc model-options
+user> (def model (ml/train (:train-ds train-test-split)
+                           (assoc model-options
                                   :watches watches
                                   :eval-metric "mae"
                                   :round 100
-                                  :early-stopping-round 4)
-                           (:train-ds train-test-split)))
+                                  :early-stopping-round 4)))
 #'user/model
-user> (def metric-ds (-> (ds/name-values-seq->dataset (get-in model [:model :metrics]))
-                         (ds/add-or-update-column "Round" (int-array (range 100)))))
-#'user/metric-ds
-user> (def filtered-metrics (ds/ds-filter #(> (get % :test-ds) 0.0) metric-ds))
-#'user/filtered-metrics
-user> filtered-metrics
-_unnamed [61 3]:
+user> (ds/tail (get-in model [:model-data :metrics]))
+:metrics [5 2]:
 
-|  :train-ds |   :test-ds | Round |
-|------------+------------+-------|
-| 152023.609 | 155104.422 |     0 |
-| 128871.703 | 131292.078 |     1 |
-| 109361.906 | 111617.023 |     2 |
-|  92792.797 |  94516.602 |     3 |
-|  78915.680 |  80522.008 |     4 |
-|  66949.461 |  68706.063 |     5 |
-|  56878.953 |  58783.195 |     6 |
-|  48459.984 |  50716.762 |     7 |
-|  41276.801 |  43895.254 |     8 |
-|  35206.266 |  38271.211 |     9 |
-|  30170.004 |  33724.871 |    10 |
-|  25856.465 |  30095.787 |    11 |
-|  22220.389 |  27317.229 |    12 |
+| :train-ds | :test-ds |
+|-----------|----------|
+|       0.0 |      0.0 |
+|       0.0 |      0.0 |
+|       0.0 |      0.0 |
+|       0.0 |      0.0 |
+|       0.0 |      0.0 |
 ...
-
-user> (require '[tech.v2.datatype :as dtype])
-nil
-user> (ds/select filtered-metrics
-                 :all
-                 (take-last 10 (range (second (dtype/shape filtered-metrics)))))
-_unnamed [10 3]:
-
-| :train-ds |  :test-ds | Round |
-|-----------+-----------+-------|
-|   741.896 | 17386.498 |    51 |
-|   688.998 | 17372.967 |    52 |
-|   664.834 | 17369.799 |    53 |
-|   629.150 | 17361.590 |    54 |
-|   597.003 | 17352.551 |    55 |
-|   562.561 | 17351.961 |    56 |
-|   534.878 | 17361.086 |    57 |
-|   507.697 | 17360.170 |    58 |
-|   473.220 | 17360.492 |    59 |
-|   451.281 | 17359.107 |    60 |
 ```
-
 So here we asked XGBoost to stop if the error on the evaluation dataset (the 'last'
-dataset in the watches map) rises 4 rounds consecutively.
+dataset in the watches map) rises 4 rounds consecutively.  As a result, we see that
+the end of the metrics dataset is all zeros.  What round did we actually get to?
 
+```clojure
+user> (def final-metrics (-> (get-in model [:model-data :metrics])
+                             (assoc :round (range 100))
+                             (ds/filter-column :test-ds #(not= 0.0 (double %)))))
+
+#'user/final-metrics
+user> (ds/tail final-metrics)
+:metrics [5 3]:
+
+|     :train-ds |       :test-ds | :round |
+|---------------|----------------|--------|
+| 1799.49560547 | 17184.22460938 |     50 |
+| 1751.87585449 | 17190.24023438 |     51 |
+| 1715.23388672 | 17189.55859375 |     52 |
+| 1690.89416504 | 17189.88085938 |     53 |
+| 1653.31481934 | 17184.24023438 |     54 |
+```
 
 ## Caveat - Cleaning the Options Map
 
 
 The options used to train the model are stored verbatim in the model map.  This means
-that if you use watches and then save the model you will probably get an error.
-The best way around this is to remove watches from the model option map before
-you attemp to nippy the data:
-
+that if you use watches and then save the model you will probably more data in your
+nippy than you had planned on and it might just not work at all:
 
 ```clojure
+user> (require '[taoensso.nippy :as nippy])
+nil
+user> (count (nippy/freeze model))
+Execution error (ExceptionInfo) at taoensso.nippy/throw-unfreezable (nippy.clj:982).
+Unfreezable type: class java.util.LinkedHashMap
+```
 
-user> (keys (:options model))
-(:dataset-shape
- :feature-columns
- :watches
- :label-columns
- :round
- :early-stopping-round
- :model-type
- :eval-metric
- :label-map
- :column-map)
-user> (def clean-model (update model :options dissoc :watches))
-#'user/clean-model
-user> (keys (:options clean-model))
-(:dataset-shape
- :feature-columns
- :label-columns
- :round
- :early-stopping-round
- :model-type
- :eval-metric
- :label-map
- :column-map)
+So we just clean up the options map (and the metrics) before saving:
+
+```clojure
+user> (-> (update model :model-data dissoc :metrics)
+          (update :options dissoc :watches)
+          (nippy/freeze)
+          (count))
+248398
 ```
 
 
@@ -459,7 +503,7 @@ user> (keys (:options clean-model))
 
 
 We grabbed a dataset, made it trainable (no missing, no strings, everything is
-double datatype).  We then trained an initial model and checked out which columns
+a numeric datatype).  We then trained an initial model and checked out which columns
 XGBoost found useful.  We furthermore built out metrics using xgboost's watches
 feature and observed error rates as XGBoost continued to train.  We then ask xgboost
 to stop training if the error on a validation dataset (the last of the watches map

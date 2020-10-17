@@ -168,10 +168,14 @@
     (let [objective (options->objective options)
           train-dmat (dataset->dmatrix feature-ds label-ds)
           base-watches (or (:watches options) {})
+          feature-cnames (ds/column-names feature-ds)
+          target-cnames (ds/column-names label-ds)
           watches (->> base-watches
                        (reduce (fn [^Map watches [k v]]
                                  (.put watches (ds-utils/column-safe-name k)
-                                       (dataset->dmatrix v))
+                                       (dataset->dmatrix
+                                        (ds/select-columns v feature-cnames)
+                                        (ds/select-columns v target-cnames)))
                                  watches)
                                ;;Linked hash map to preserve order
                                (LinkedHashMap.)))
@@ -233,8 +237,8 @@ c/xgboost4j/java/XGBoost.java#L208"))
                (map (fn [[watch-idx [watch-name watch-data]]]
                       [(get watch-names watch-idx)
                        (aget metrics-data watch-idx)]))
-               (ds/->dataset)
-               (#(vary-meta % assoc :name :metrics)))})))))
+               (into {})
+               (ds/->>dataset {:dataset-name :metrics}))})))))
 
 
 (defn- thaw-model
