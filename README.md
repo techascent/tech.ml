@@ -10,7 +10,7 @@ Library to encapsulate a few core concepts of techascent system.
 
 
 
-## Simple Examples Regression/Classification
+## Simple Regression And Classification
 
 We start out a require:
 
