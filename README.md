@@ -4,8 +4,6 @@
 
 Library to encapsulate a few core concepts of techascent system.
 
-
-* Smile now supports elasticnet in main distribution.  Use `{:model-type :smile.regression/elastic-net}` in your options.
 * [API Documentation](https://techascent.github.io/tech.ml/)
 
 
@@ -38,7 +36,7 @@ https://raw.githubusercontent.com/techascent/tech.ml/master/test/data/iris.csv [
 
 ### Preparing The Dataset
 
-We need to have all numbers in our dataset.  The species column is a categorical
+We need to have all numeric columns in our dataset.  The species column is a categorical
 column and we will need to convert it to a numeric column while remembering
 what mapping we used.  We introduce the column filters namespace that performs
 various filtering operations on the columns themselves returning new datasets:
@@ -99,9 +97,9 @@ use the default xgboost regression model.  Moving into actual modelling, we will
 including the `tech.v3.dataset.modelling` namespace and the xgboost bindings.
 
 
-We will use method were we split the dataset into train/test datasets
+We will use a method were we split the dataset into train/test datasets
 via random sampling, train the model, and calculate the loss using the
-then use the default regression loss function - mean average error or
+test-ds and the default regression loss function - mean average error or
 `mae`:
 
 
@@ -112,6 +110,8 @@ user> (def regression-ds (ds-mod/set-inference-target numeric-ds "petal_width"))
 #'user/regression-ds
 user> (require '[tech.v3.libs.xgboost])
 nil
+;; Also tech.v3.libs.smile.regression and tech.v3.libs.smile.classification provide quite
+;; a few models.
 user> (require '[tech.v3.ml :as ml])
 nil
 user> (def model (ml/train-split regression-ds {:model-type :xgboost/regression}))
@@ -237,7 +237,7 @@ user> (map meta (vals *1))
   :column-type :prediction})
 ```
 
-Due to the metadata saved on the species column we can reverse map back to the
+Due to the metadata saved on the `species` column we can reverse map back to the
 original column values using the `tech.v3.dataset.categorical` namespace:
 
 
@@ -258,7 +258,7 @@ user> (ds/head (ds-cat/reverse-map-categorical-xforms predictions))
 
 
 We have generic support for xgboost and smile.  This gives you quite a few models and
-they are all gridsearcheable as above.  We put this forward in an attempt to simplify
+they are all gridsearcheable.  We put this forward in an attempt to simplify
 doing ML that we do and in an attempt to move the Clojure ML conversation forward
 towards getting the best possible results for a dataset in the least amount of
 (developer) time.
