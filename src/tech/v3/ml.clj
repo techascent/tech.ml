@@ -16,9 +16,9 @@
 
 
 (defn define-model!
-  "Create a model definition.  An ml model is a function that takes a dataset and an options map and
-  returns a model.  A model is something that, combined with a dataset, produces a inferred
-  dataset."
+  "Create a model definition.  An ml model is a function that takes a dataset and an
+  options map and returns a model.  A model is something that, combined with a dataset,
+  produces a inferred dataset."
   [model-kwd train-fn predict-fn {:keys [hyperparameters
                                          thaw-fn
                                          explain-fn]}]
@@ -30,12 +30,13 @@
   :ok)
 
 (defn model-definition-names
+  "Return a list of all registered model defintion names."
   []
   (keys @model-definitions*))
 
 
 (defn options->model-def
-  "Model definitions are specified by the :model-type keyword in the options map."
+  "Return the model definition that corresponse to the :model-type option"
   [options]
   (if-let [model-def (get @model-definitions* (:model-type options))]
     model-def
@@ -43,15 +44,15 @@
 
 
 (defn hyperparameters
-  "Get the hyperparameters from the model-type in the options."
+  "Get the hyperparameters for this model definition"
   [model-kwd]
   (:hyperparameters (options->model-def {:model-type model-kwd})))
 
 
 (defn train
-  "Given a dataset and an options map produce a model.  The model-type keyword in the options
-  map selects which model definition to use to train the model.
-  Returns a map containing at least:
+  "Given a dataset and an options map produce a model.  The model-type keyword in the
+  options map selects which model definition to use to train the model.  Returns a map
+  containing at least:
 
 
   * `:model-data` - the result of that definitions's train-fn.
@@ -81,9 +82,10 @@ see tech.v3.dataset.modelling/set-inference-target")
 
 
 (defn thaw-model
-  "Thaw a model.  Model's stored in options map may be 'frozen' meaning a 'thaw' operations is needed
-  in order to use the model.  This happens for you during preduct but you may also cached the 'thawed'
-  model on the model map under the ':thawed-model' keyword."
+  "Thaw a model.  Model's returned from train may be 'frozen' meaning a 'thaw'
+  operation is needed in order to use the model.  This happens for you during preduct
+  but you may also cached the 'thawed' model on the model map under the
+  ':thawed-model'  keyword in order to do fast predictions on small datasets."
   [model {:keys [thaw-fn]}]
   (if-let [cached-model (get model :thawed-model)]
     cached-model
@@ -95,9 +97,10 @@ see tech.v3.dataset.modelling/set-inference-target")
 (defn predict
   "Predict returns a dataset with only the predictions in it.
 
-  * For regression, a single column dataset is returned with the column named after the target
-  * For classification, a dataset is returned with a float64 column for each target value and values
-    that describe the probability distribution."
+  * For regression, a single column dataset is returned with the column named after the
+    target
+  * For classification, a dataset is returned with a float64 column for each target
+    value and values that describe the probability distribution."
   [dataset model]
   (let [{:keys [predict-fn] :as model-def} (options->model-def (:options model))
         feature-ds (ds/select-columns dataset (:feature-columns model))
@@ -125,9 +128,9 @@ see tech.v3.dataset.modelling/set-inference-target")
 
 
 (defn default-loss-fn
-  "Given a datset which must have exactly 1 inference target column return a
-  default loss fn. If column is categorical, loss is tech.v3.ml.loss/classification-loss,
-  else the loss is tech.v3.ml.loss/mae (mean average error)."
+  "Given a datset which must have exactly 1 inference target column return a default
+  loss fn. If column is categorical, loss is tech.v3.ml.loss/classification-loss, else
+  the loss is tech.v3.ml.loss/mae (mean average error)."
   [dataset]
   (let [target-ds (cf/target dataset)]
     (errors/when-not-errorf
@@ -199,13 +202,14 @@ see tech.v3.dataset.modelling/set-inference-target")
 
 (defn train-auto-gridsearch
   "Train a model gridsearching across the options map.  The gridsearch map is built by
-  merging the model's hyperparameter definitions into the options map.  If the sobol sequence
-  returned has only one element a warning is issued.  Note this returns a sequence of models
-  as opposed to a single model.
+  merging the model's hyperparameter definitions into the options map.  If the sobol
+  sequence returned has only one element a warning is issued.  Note this returns a
+  sequence of models as opposed to a single model.
 
 
   * Searches across k-fold datasets if n-k-folds is > 1.  n-k-folds defaults to 5.
-  * Searches (in parallel) through n-gridsearch option maps created via sobol-gridsearch.
+  * Searches (in parallel) through n-gridsearch option maps created via
+    sobol-gridsearch.
   * Returns n-result-models (defaults to 5) sorted by avg-loss.
   * loss-fn can be provided or is the loss-fn returned via default-loss-fn."
   ([dataset options {:keys [n-k-folds
