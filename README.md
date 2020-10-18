@@ -5,7 +5,7 @@
 Library to encapsulate a few core concepts of techascent system.
 
 
-* Smile now supports elasticnet in main distribution.  Use `{:model-type :smile.regression/elasticnet}` in your options.
+* Smile now supports elasticnet in main distribution.  Use `{:model-type :smile.regression/elastic-net}` in your options.
 * [API Documentation](https://techascent.github.io/tech.ml/)
 
 
