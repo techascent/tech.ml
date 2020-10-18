@@ -2,8 +2,8 @@
 
 
 Recently we upgraded access to the xgboost machine learning system to include
-metrics and early stopping.  This document will be a quick walkthough using the ames
-dataset to show how to use both systems.
+metrics and early stopping.  This document will be a quick walkthough using the Ames
+housing prices dataset to show how to use both systems.
 
 
 ## Dataset Processing
@@ -285,7 +285,8 @@ user> (def model-options (:options (first search-results)))
 
 Metrics will help us see if the model itself is overtraining.  When you setup
 xgboost options with one or more `watch` datasets, it will dump out the metrics
-generated during training to a map of the same name under the [:model-data :metrics]:
+generated during training to a map of the same name under the [:model-data :metrics]
+path:
 
 ```clojure
 user> (def model (ml/train (:train-ds train-test-split)
@@ -361,7 +362,7 @@ user> (ds/tail (get-in model [:model-data :metrics]) 20)
 
 Now we see a very common case.  XGBoost is overtraining; the error on the validation
 set not improving while the model continues to train further.  We can make this
-clearer by add in the training dataset to the watches map:
+clearer by adding in the training dataset to the watches map:
 
 ```clojure
 user> (def model (ml/train (:train-ds train-test-split)
@@ -398,9 +399,10 @@ user> (ds/tail (get-in model [:model-data :metrics]) 20)
 ...
 ```
 
+We see the loss continue to decrease on the training set while the
+loss on the test set is staying fairly constant.
 
 ## Early Stopping
-
 
 Using the built-in XGBoost early stopping we can avoid overtraining:
 
@@ -422,7 +424,8 @@ c/xgboost4j/java/XGBoost.java#L208
 
 Oops!  This is a implementation detail of xgboost.  We have to use a map that
 retains insertion order in order to do early stopping or we have to have only
-one watch.
+one watch.  XGBoost will use the *last entry* in the watches map to perform
+it's early stopping checks.
 
 
 ```clojure
@@ -508,3 +511,10 @@ XGBoost found useful.  We furthermore built out metrics using xgboost's watches
 feature and observed error rates as XGBoost continued to train.  We then ask xgboost
 to stop training if the error on a validation dataset (the last of the watches map
 by iteration) increased 4 rounds consecutively.
+
+
+For this dataset specifically there are quite a lot of dataset-specific operations
+you can do to improve the results.  The examples above are intended to
+show the range of training options that XGBoost provides out of the box.  We hope you
+enjoy using this excellent software library and that these relatively simple techniques
+can allow you to get to great results quickly.
