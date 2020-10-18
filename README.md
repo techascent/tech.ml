@@ -2,7 +2,7 @@
 
 [![Clojars Project](https://img.shields.io/clojars/v/techascent/tech.ml.svg)](https://clojars.org/techascent/tech.ml)
 
-Library to encapsulate a few core concepts of techascent system.
+Basic machine learning library for use with `tech.v3.dataset`.
 
 * [API Documentation](https://techascent.github.io/tech.ml/)
 
