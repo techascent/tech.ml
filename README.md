@@ -244,6 +244,8 @@ original column values using the `tech.v3.dataset.categorical` namespace:
 ```clojure
 user> (require '[tech.v3.dataset.categorical :as ds-cat])
 nil
+user> (def predictions (ml/predict classification-ds k-fold-model))
+#'user/predictions
 user> (ds/head (ds-cat/reverse-map-categorical-xforms predictions))
 :_unnamed [5 4]:
 
