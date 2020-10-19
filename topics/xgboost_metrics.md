@@ -18,10 +18,10 @@ processing and the general pathway in order to do simple machine learning.
 
 user> (require '[tech.v3.dataset :as ds])
 nil
-user> (def ames (ds/->dataset "https://github.com/techascent/tech.ml/blob/dataset-5.X/test/data/train.csv.gz?raw=true"
+user> (def ames (ds/->dataset "https://github.com/techascent/tech.ml/raw/master/test/data/train.csv.gz"
                               {:file-type :csv :gzipped? true}))
 #'user/ames
-user> (ds/columns-with-missing-seq ames-ds)
+user> (ds/columns-with-missing-seq ames)
 ({:column-name "LotFrontage", :missing-count 259}
  {:column-name "Alley", :missing-count 1369}
  {:column-name "MasVnrType", :missing-count 8}
@@ -74,6 +74,8 @@ user> (require '[tech.v3.libs.xgboost])
 nil
 user> (require '[tech.v3.dataset.modelling :as ds-mod])
 nil
+user> (def ames-processed (ds-mod/set-inference-target all-numeric "SalePrice"))
+#'user/ames-processed
 ```
 
 We split the dataset up into train/test datasets where we can train on one dataset
@@ -81,7 +83,7 @@ and test on another.
 
 
 ```clojure
-user> (def train-test-split (ds/->train-test-split ames-processed))
+user> (def train-test-split (ds-mod/train-test-split ames-processed))
 #'user/train-test-split
 user> (def model (ml/train {:model-type :xgboost/regression}
                            (:train-ds train-test-split)))
@@ -204,6 +206,8 @@ Once we have a map where some of the keys map to gridsearch entries, we can use 
 automatic gridsearch facility in tech.ml to search over the space:
 
 ```clojure
+user> (require '[tech.v3.ml.gridsearch :as gs])
+nil
 user> (def gridsearchable-options (merge {:model-type :xgboost/regression} (ml/hyperparameters :xgboost/regression)))
 #'user/gridsearchable-options
 user> (def option-seq (take 100 (gs/sobol-gridsearch gridsearchable-options)))
@@ -260,7 +264,7 @@ options or perform a new sub-gridsearch given ranges built from the return value
 of the previous gridsearch.
 
 ```clojure
-user> (:options (first gridsearch))
+user> (:options (first search-results))
 {:subsample 0.690625,
  :scale-pos-weight 1.346875,
  :lambda 0.6940625,
