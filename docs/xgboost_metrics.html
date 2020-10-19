@@ -6,10 +6,10 @@
 <p>Our goal is to end up with float64 columns with no missing values. This is a fast rough pass and isn’t anywhere near ideal. For instance many of the string columns should be encoded to preserve semantic order. Regardless this will show some minimal processing and the general pathway in order to do simple machine learning.</p>
 <pre><code class="clojure"><br />user&gt; (require '[tech.v3.dataset :as ds])
 nil
-user&gt; (def ames (ds/-&gt;dataset "https://github.com/techascent/tech.ml/blob/dataset-5.X/test/data/train.csv.gz?raw=true"
+user&gt; (def ames (ds/-&gt;dataset "https://github.com/techascent/tech.ml/raw/master/test/data/train.csv.gz"
                               {:file-type :csv :gzipped? true}))
 #'user/ames
-user&gt; (ds/columns-with-missing-seq ames-ds)
+user&gt; (ds/columns-with-missing-seq ames)
 ({:column-name "LotFrontage", :missing-count 259}
  {:column-name "Alley", :missing-count 1369}
  {:column-name "MasVnrType", :missing-count 8}
@@ -58,9 +58,11 @@ user&gt; (require '[tech.v3.libs.xgboost])
 nil
 user&gt; (require '[tech.v3.dataset.modelling :as ds-mod])
 nil
+user&gt; (def ames-processed (ds-mod/set-inference-target all-numeric "SalePrice"))
+#'user/ames-processed
 </code></pre>
 <p>We split the dataset up into train/test datasets where we can train on one dataset and test on another.</p>
-<pre><code class="clojure">user&gt; (def train-test-split (ds/-&gt;train-test-split ames-processed))
+<pre><code class="clojure">user&gt; (def train-test-split (ds-mod/train-test-split ames-processed))
 #'user/train-test-split
 user&gt; (def model (ml/train {:model-type :xgboost/regression}
                            (:train-ds train-test-split)))
@@ -159,7 +161,9 @@ WARNING - excluding non-numeric columns:
   :result-space :int64},
 </code></pre>
 <p>Once we have a map where some of the keys map to gridsearch entries, we can use the automatic gridsearch facility in tech.ml to search over the space:</p>
-<pre><code class="clojure">user&gt; (def gridsearchable-options (merge {:model-type :xgboost/regression} (ml/hyperparameters :xgboost/regression)))
+<pre><code class="clojure">user&gt; (require '[tech.v3.ml.gridsearch :as gs])
+nil
+user&gt; (def gridsearchable-options (merge {:model-type :xgboost/regression} (ml/hyperparameters :xgboost/regression)))
 #'user/gridsearchable-options
 user&gt; (def option-seq (take 100 (gs/sobol-gridsearch gridsearchable-options)))
 #'user/option-seq
@@ -210,7 +214,7 @@ user&gt; (map :loss search-results)
  18305.031258918378)
 </code></pre>
 <p>Note that gridsearching saves out the option map so we can see what produced the best options or perform a new sub-gridsearch given ranges built from the return value of the previous gridsearch.</p>
-<pre><code class="clojure">user&gt; (:options (first gridsearch))
+<pre><code class="clojure">user&gt; (:options (first search-results))
 {:subsample 0.690625,
  :scale-pos-weight 1.346875,
  :lambda 0.6940625,
