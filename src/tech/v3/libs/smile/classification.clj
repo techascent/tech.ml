@@ -8,7 +8,8 @@
             [tech.v3.ml.gridsearch :as ml-gs]
             [tech.v3.ml.model :as model]
             [tech.v3.ml :as ml]
-            [tech.v3.libs.smile.protocols :as smile-proto])
+            [tech.v3.libs.smile.protocols :as smile-proto]
+            [tech.v3.libs.smile.data :as smile-data])
   (:import [smile.classification SoftClassifier AdaBoost LogisticRegression]
            [smile.data.formula Formula]
            [smile.data DataFrame]
@@ -20,7 +21,7 @@
 
 (defn- tuple-predict-posterior
   [^SoftClassifier model ds options n-labels]
-  (let [df (ds/dataset->smile-dataframe ds)
+  (let [df (smile-data/dataset->smile-dataframe ds)
         n-rows (ds/row-count ds)]
     (smile-proto/initialize-model-formula! model ds)
     (reify
@@ -306,7 +307,7 @@
                        (ds/update-columnwise
                         label-ds :all
                         dtype/elemwise-cast :int32))
-        data (ds/dataset->smile-dataframe dataset)
+        data (smile-data/dataset->smile-dataframe dataset)
         properties (smile-proto/options->properties entry-metadata dataset options)
         ctor (:constructor entry-metadata)
         model (ctor formula data properties)]

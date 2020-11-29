@@ -7,6 +7,7 @@
             [tech.v3.dataset.utils :as ds-utils]
             [tech.v3.datatype :as dtype]
             [tech.v3.ml.gridsearch :as ml-gs]
+            [tech.v3.libs.smile.data :as smile-data]
             [tech.v3.libs.smile.protocols :as smile-proto])
   (:import [smile.regression
             Regression
@@ -65,7 +66,7 @@
 
 (defn- predict-df
   [^DataFrameRegression thawed-model ds]
-  (let [df (ds/dataset->smile-dataframe ds)]
+  (let [df (smile-data/dataset->smile-dataframe ds)]
     (smile-proto/initialize-model-formula! thawed-model ds)
     (.predict thawed-model df)))
 
@@ -226,7 +227,7 @@
                  (ds-utils/column-safe-name (first target-colnames))
                  (map ds-utils/column-safe-name feature-colnames))
         full-ds (merge feature-ds label-ds)
-        data (ds/dataset->smile-dataframe full-ds)
+        data (smile-data/dataset->smile-dataframe full-ds)
         properties (smile-proto/options->properties entry-metadata full-ds options)
         ctor (:constructor entry-metadata)
         model (ctor formula data properties)]
