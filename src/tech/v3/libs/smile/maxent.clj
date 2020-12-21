@@ -48,8 +48,9 @@
 
 
 
-(defn maxent-train [feature-ds target-ds options]
-  "Training function of Maxent/multinomial model.
+
+(defn maxent-train [feature-ds target-ds options maxent-type]
+  "Training function of Maxent model
    The first feature column of `feature-ds` needs to contain the text as a sparce vector
    agains the vocabulary."
   (let [train-array (into-array ^"[[Ljava.lang.Integer"
@@ -58,19 +59,42 @@
                                       (get target-ds (first (ds-mod/inference-target-column-names target-ds))))
         p (count (-> feature-ds meta :count-vectorize-vocabulary :vocab->index-map))
         options (merge maxent-default-parameters options)]
-    (Maxent/multinomial
-     p
-     train-array
-     train-score-array
-     (:lambda options)
-     (:tol options)
-     (:max-iter options))))
+    (if (= maxent-type :multinomial)
+      (Maxent/multinomial
+       p
+       train-array
+       train-score-array
+       (:lambda options)
+       (:tol options)
+       (:max-iter options))
+      (Maxent/binomial
+       p
+       train-array
+       train-score-array
+       (:lambda options)
+       (:tol options)
+       (:max-iter options)))))
+
+(defn maxent-train-multinomial [feature-ds target-ds options]
+  "Training function of Maxent/multinomial model.
+   The first feature column of `feature-ds` needs to contain the text as a sparce vector
+   agains the vocabulary."
+  (maxent-train feature-ds target-ds options :multinomial))
+
+
+(defn maxent-train-binomial [feature-ds target-ds options]
+  "Training function of Maxent/binomial model.
+   The first feature column of `feature-ds` needs to contain the text as a sparce vector
+   agains the vocabulary."
+  (maxent-train feature-ds target-ds options :binomial))
+
+
 
 
 (defn maxent-predict [feature-ds
                       thawed-model
                       model]
-  "Predict function for Maxent/multinomial"
+  "Predict function for Maxent"
   (let [predict-array
         (into-array ^"[[Ljava.lang.Integer"
                     (get feature-ds :bow-sparse))
@@ -81,8 +105,14 @@
 
 
 (ml/define-model!
-  :maxent
-  maxent-train
+  :maxent-multinomial
+  maxent-train-multinomial
+  maxent-predict
+  {})
+
+(ml/define-model!
+  :maxent-binomial
+  maxent-train-binomial
   maxent-predict
   {})
 
@@ -100,7 +130,7 @@
      (ds-mod/set-inference-target :Score)
      ))
 
-  (def trained-model (ml/train reviews {:model-type :maxent
+  (def trained-model (ml/train reviews {:model-type :maxent-multinomial
                                         :sparse-column :bow-sparse
                                         }))
   ;; should predict on new data
@@ -112,7 +142,7 @@
   (def models
     (ml/train-auto-gridsearch
      reviews
-     {:model-type :maxent
+     {:model-type :maxent-multinomial
       :sparse-column :bow-sparse
       :lambda {:tech.v3.ml.gridsearch/type :linear
                :start 0.001
@@ -131,6 +161,4 @@
                  :end 10000.0
                  :n-steps 20
                  :result-space :int64 }
-      }))
-
-  )
+      })))
