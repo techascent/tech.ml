@@ -11,7 +11,7 @@ of how to use this library."
                  [ml.dmlc/xgboost4j "0.90"]
                  [org.bytedeco/openblas "0.3.10-1.5.4"]
                  [org.bytedeco/openblas-platform "0.3.10-1.5.4"]
-                 [pppmap/pppmap "0.1.0"]
+                 [pppmap/pppmap "0.2.0"]
 
                  ]
   :profiles
