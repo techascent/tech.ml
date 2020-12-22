@@ -14,7 +14,7 @@
    })
 
 (defn bow->sparse-indices [bow vocab->index-map]
-  "Converts the tken-frequencies to the sparse vectors
+  "Converts the token-frequencies to the sparse vectors
    needed by Maxent"
   (->>
    (merge-with
