@@ -16,8 +16,6 @@
    (ds-mod/set-inference-target :Score)))
 
 
-
-
 (deftest freqs->SparseArray []
   (is (=
        (map
@@ -35,11 +33,9 @@
               (ml/train reviews {:model-type :discrete-naive-bayes
                                  :discrete-naive-bayes-model :bernoulli
                                  :sparse-column :bow-sparse
-                                 :k 5
-                                 })
+                                 :k 5})
               prediction (ml/predict (ds/head reviews 10) trained-model)]
-          prediction
-          ))
+          prediction))
        [3 3 3 3 3 4 4 3 3 3])))
 
 (deftest test-discrete-nb-multinomial
@@ -50,10 +46,7 @@
               (ml/train reviews {:model-type :discrete-naive-bayes
                                  :discrete-naive-bayes-model :multinomial
                                  :sparse-column :bow-sparse
-                                 :k 5
-                                 })
-              prediction (ml/predict (ds/head reviews 10) trained-model)
-              ]
-          prediction
-          ))
+                                 :k 5})
+              prediction (ml/predict (ds/head reviews 10) trained-model)]
+          prediction))
        [4 4 3 2 3 4 4 4 4 4])))

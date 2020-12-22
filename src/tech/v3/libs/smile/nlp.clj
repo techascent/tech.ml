@@ -42,7 +42,7 @@
      }))
 
 (defn count-vectorize [ds text-col bow-col text->bow-fn]
-  "Converts text column `text-col` to bag-of-words crepresentation
+  "Converts text column `text-col` to bag-of-words representation
    in the form of a frequency-count map"
   (ds/add-or-update-column
    ds
@@ -56,8 +56,8 @@
 
 
 (defn bow->something-sparse [ds bow-col indices-col vocab-size bow->sparse-fn]
-  "Converts a bag-of-word column `bow-col` to sparse indices column `indices-col`,
-   as needed by the Maxent model."
+  "Converts a bag-of-word column `bow-col` to a sparse data column `indices-col`.
+   The exact transformation to the sparse representtaion is given by `bow->sparse-fn`"
   (let [vocabulary (->vocabulary-top-n (get ds bow-col) vocab-size)
         vocab->index-map (:vocab->index-map vocabulary)
         ds
