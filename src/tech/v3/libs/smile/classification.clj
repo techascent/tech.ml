@@ -368,8 +368,5 @@
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
     (def model (ml/train train-ds {:model-type :smile.classification/decision-tree
-                                   ;; :split-rule SplitRule/CLASSIFICATION_ERROR
-                                   }))
-    (def prediction (ml/predict test-ds model))
-    )
-  )
+                                   :split-rule SplitRule/CLASSIFICATION_ERROR}))
+    (def prediction (ml/predict test-ds model))))
