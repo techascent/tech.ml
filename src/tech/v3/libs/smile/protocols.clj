@@ -56,14 +56,19 @@
   (let [pname-stem (:property-name-stem metadata)]
     (->> (:options metadata)
          (reduce (fn [^Properties props {:keys [name default lookup-table]}]
+
                    (let [default (or (get lookup-table default)
-                                     default)]
+                                     default)
+                         value (get options name)
+                         value (get lookup-table value value)
+                         ]
                      (.put props (format "%s.%s"
                                          pname-stem
                                          (.replace ^String (clojure.core/name name)
                                                    "-" "."))
-                           (str (dtype/cast (or (get options name)
-                                             (resolve-default default dataset))
+
+                           (str (dtype/cast (or value
+                                                (resolve-default default dataset))
                                             (dtype/get-datatype default)))))
                    props)
                  (Properties.)))))

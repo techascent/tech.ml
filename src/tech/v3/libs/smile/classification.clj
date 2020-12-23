@@ -50,6 +50,10 @@
           (.predict model (double-array (value-reader idx)) posterior)
           posterior)))))
 
+(def split-rule-lookup-table
+  {:gini SplitRule/GINI
+   :entropy SplitRule/ENTROPY
+   :classification-error  SplitRule/CLASSIFICATION_ERROR})
 
 (def ^:private classifier-metadata
   {:ada-boost
@@ -104,10 +108,14 @@
                ;; :type :enumeration
                ;; :class-type :string
                :type :string
-               :lookup-table {:gini SplitRule/GINI
-                              :entropy SplitRule/ENTROPY
-                              :classification-error  SplitRule/CLASSIFICATION_ERROR}
+               :lookup-table split-rule-lookup-table
                :default :gini}]
+    :gridsearch-options {:max-nodes (ml-gs/linear 10 1000 30)
+                         :node-size (ml-gs/linear 1 20 20)
+                         :max-depth (ml-gs/linear 1 50 20 )
+                         :split-rule (ml-gs/categorical [:gini :entropy :classification-error] )
+
+                         }
     :property-name-stem "smile.cart"
     :constructor #(DecisionTree/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
     :predictor tuple-predict-posterior
