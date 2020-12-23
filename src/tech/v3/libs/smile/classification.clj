@@ -10,7 +10,8 @@
             [tech.v3.ml :as ml]
             [tech.v3.libs.smile.protocols :as smile-proto]
             [tech.v3.libs.smile.data :as smile-data])
-  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression]
+  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree]
+           [smile.base.cart SplitRule]
            [smile.data.formula Formula]
            [smile.data DataFrame]
            [java.util Properties List]
@@ -87,23 +88,32 @@
     :constructor #(LogisticRegression/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
     :predictor double-array-predict-posterior}
 
-   ;; :decision-tree {:attributes #{:probabilities :attributes}
-   ;;                 :class-name "DecisionTree"
-   ;;                 :datatypes #{:float64-array}
-   ;;                 :name :decision-tree
-   ;;                 :options [{:name :max-nodes
-   ;;                            :type :int32
-   ;;                            :default 100}
-   ;;                           {:name :node-size
-   ;;                            :type :int32
-   ;;                            :default 1}
-   ;;                           {:name :split-rule
-   ;;                            :type :enumeration
-   ;;                            :class-type DecisionTree$SplitRule
-   ;;                            :lookup-table {:gini DecisionTree$SplitRule/GINI
-   ;;                                           :entropy DecisionTree$SplitRule/ENTROPY
-   ;;                                           :classification-error DecisionTree$SplitRule/CLASSIFICATION_ERROR}
-   ;;                            :default :gini}]}
+   :decision-tree
+   {:attributes #{:probabilities :attributes}
+    :name :decision-tree
+    :options [{:name :max-nodes
+               :type :int32
+               :default 100}
+              {:name :node-size
+               :type :int32
+               :default 1}
+              {:name :max-depth
+               :type :int32 
+               :default 20}
+              {:name :split-rule
+               ;; :type :enumeration
+               ;; :class-type :string
+               :type :string
+               :lookup-table {:gini SplitRule/GINI
+                              :entropy SplitRule/ENTROPY
+                              :classification-error  SplitRule/CLASSIFICATION_ERROR}
+               :default :gini}]
+    :property-name-stem "smile.cart"
+    :constructor #(DecisionTree/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
+    :predictor tuple-predict-posterior
+
+    }
+
    ;; :fld {:attributes #{:projection}
    ;;       :class-name "FLD"
    ;;       :datatypes #{:float64-array}
@@ -309,6 +319,7 @@
                         dtype/elemwise-cast :int32))
         data (smile-data/dataset->smile-dataframe dataset)
         properties (smile-proto/options->properties entry-metadata dataset options)
+        _ (println properties)
         ctor (:constructor entry-metadata)
         model (ctor formula data properties)]
     (model/model->byte-array model)))
@@ -356,7 +367,9 @@
     (def split-data (ds-mod/train-test-split ds))
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
-    (def model (ml/train train-ds {:model-type :smile.classification/ada-boost}))
+    (def model (ml/train train-ds {:model-type :smile.classification/decision-tree
+                                   ;; :split-rule SplitRule/CLASSIFICATION_ERROR
+                                   }))
     (def prediction (ml/predict test-ds model))
     )
   )
