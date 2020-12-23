@@ -11,7 +11,15 @@ of how to use this library."
                  [ml.dmlc/xgboost4j "0.90"]
                  [org.bytedeco/openblas "0.3.10-1.5.4"]
                  [org.bytedeco/openblas-platform "0.3.10-1.5.4"]
-                 [pppmap/pppmap "0.2.1"]]
+                 [pppmap/pppmap "0.2.1"]
+                 [com.gfredericks/debug-repl "0.0.11"]
+
+                 ]
+
+:repl-options
+  {:nrepl-middleware
+    [com.gfredericks.debug-repl/wrap-debug-repl]}
+
   :profiles
   {:codox
    {:dependencies [[codox-theme-rdash "0.1.2"]]

@@ -25,7 +25,7 @@
          frequencies)))
 
 
-(defn bows->vocabulary-top-n [bows n]
+(defn ->vocabulary-top-n [bows n]
   "Takes top-n most frequent tokens"
   (let [vocabulary
         (->>
