@@ -1,4 +1,4 @@
-(ns tech.v3.libs.maxent-test
+(ns tech.v3.libs.smile.maxent-test
   (:require [clojure.test :as t :refer [deftest is]]
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.modelling :as ds-mod]

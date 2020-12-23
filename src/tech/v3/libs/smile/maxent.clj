@@ -14,7 +14,7 @@
    })
 
 (defn bow->sparse-indices [bow vocab->index-map]
-  "Converts the tken-frequencies to the sparse vectors
+  "Converts the token-frequencies to the sparse vectors
    needed by Maxent"
   (->>
    (merge-with
@@ -30,28 +30,14 @@
 
 (defn bow->sparse-array [ds bow-col indices-col vocab-size]
   "Converts a bag-of-word column `bow-col` to sparse indices column `indices-col`,
-   as needed by the Maxent model."
-  (let [vocabulary (nlp/->vocabulary-top-n ds bow-col vocab-size)
-        vocab->index-map (:vocab->index-map vocabulary)
-        ds
-        (vary-meta ds assoc
-                   :count-vectorize-vocabulary vocabulary)]
-    (ds/add-or-update-column
-     ds
-     (ds/new-column
-      indices-col
-      (ppp/ppmap-with-progress
-       "bow->sparse"
-       1000
-       #(bow->sparse-indices % vocab->index-map)
-       (get ds bow-col))))))
-
-
+   as needed by the Maxent model.
+   `vocab size` is the size of vocabluary used, sorted by token frequency "
+  (nlp/bow->something-sparse ds bow-col indices-col vocab-size bow->sparse-indices))
 
 
 (defn maxent-train [feature-ds target-ds options maxent-type]
-  "Training function of Maxent model
-   The first feature column of `feature-ds` needs to contain the text as a sparce vector
+    "Training function of Maxent model
+   The column of name `(options :sparse-colum)` of `feature-ds` needs to contain the text as a sparce vector
    agains the vocabulary."
   (let [train-array (into-array ^"[[Ljava.lang.Integer"
                                 (get feature-ds (:sparse-column options)))
@@ -59,7 +45,8 @@
                                       (get target-ds (first (ds-mod/inference-target-column-names target-ds))))
         p (count (-> feature-ds meta :count-vectorize-vocabulary :vocab->index-map))
         options (merge maxent-default-parameters options)]
-    (if (= maxent-type :multinomial)
+    (case maxent-type
+      :multinomial
       (Maxent/multinomial
        p
        train-array
@@ -67,6 +54,7 @@
        (:lambda options)
        (:tol options)
        (:max-iter options))
+      :binomial
       (Maxent/binomial
        p
        train-array
@@ -76,19 +64,17 @@
        (:max-iter options)))))
 
 (defn maxent-train-multinomial [feature-ds target-ds options]
-  "Training function of Maxent/multinomial model.
-   The first feature column of `feature-ds` needs to contain the text as a sparce vector
+  "Training function of Maxent/multinomial model
+   The column of name `(options :sparse-colum)` of `feature-ds` needs to contain the text as a sparse vector
    agains the vocabulary."
   (maxent-train feature-ds target-ds options :multinomial))
 
 
 (defn maxent-train-binomial [feature-ds target-ds options]
-  "Training function of Maxent/binomial model.
-   The first feature column of `feature-ds` needs to contain the text as a sparce vector
+  "Training function of Maxent/binomial model
+   The column of name `(options :sparse-colum)` of `feature-ds` needs to contain the text as a sparse vector
    agains the vocabulary."
   (maxent-train feature-ds target-ds options :binomial))
-
-
 
 
 (defn maxent-predict [feature-ds
@@ -99,9 +85,9 @@
         (into-array ^"[[Ljava.lang.Integer"
                     (get feature-ds :bow-sparse))
         target-colum (first (:target-columns model))]
-    (ds/->dataset (hash-map
+    (ds/->dataset {
                    target-colum
-                   (seq  (.predict (:model-data model) predict-array))))))
+                   (seq  (.predict (:model-data model) predict-array))})))
 
 
 (ml/define-model!

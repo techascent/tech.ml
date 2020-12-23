@@ -8,7 +8,7 @@
 
 ;; )
 (defn default-text->bow [text]
-  "Converts text to token counts (a map token -> count"
+  "Converts text to token counts (a map token -> count)"
   (let [normalizer (SimpleNormalizer/getInstance)
         tokenizer (SimpleTokenizer. )
         sentence-splitter (SimpleSentenceSplitter/getInstance)
@@ -25,11 +25,11 @@
          frequencies)))
 
 
-(defn ->vocabulary-top-n [ds bow-col n]
+(defn ->vocabulary-top-n [bows n]
   "Takes top-n most frequent tokens"
   (let [vocabulary
         (->>
-         (apply merge-with + (get ds bow-col))
+         (apply merge-with + bows)
          (sort-by second)
          reverse
          (take n)
@@ -42,7 +42,7 @@
      }))
 
 (defn count-vectorize [ds text-col bow-col text->bow-fn]
-  "Converts text column `text-col` to bag-of-words crepresentation
+  "Converts text column `text-col` to bag-of-words representation
    in the form of a frequency-count map"
   (ds/add-or-update-column
    ds
@@ -55,3 +55,20 @@
      (get ds text-col)))))
 
 
+(defn bow->something-sparse [ds bow-col indices-col vocab-size bow->sparse-fn]
+  "Converts a bag-of-word column `bow-col` to a sparse data column `indices-col`.
+   The exact transformation to the sparse representtaion is given by `bow->sparse-fn`"
+  (let [vocabulary (->vocabulary-top-n (get ds bow-col) vocab-size)
+        vocab->index-map (:vocab->index-map vocabulary)
+        ds
+        (vary-meta ds assoc
+                   :count-vectorize-vocabulary vocabulary)]
+    (ds/add-or-update-column
+     ds
+     (ds/new-column
+      indices-col
+      (ppp/ppmap-with-progress
+       "bow->sparse"
+       1000
+       #(bow->sparse-fn % vocab->index-map)
+       (get ds bow-col))))))
