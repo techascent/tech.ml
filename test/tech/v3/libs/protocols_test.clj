@@ -58,3 +58,20 @@
             nil) "prefix.test.lookup"
 
            ) "GINI")))
+
+(deftest lookup-enum-option []
+  (is (=  (.getProperty
+           (proto/options->properties
+            {:property-name-stem "prefix"
+             :options
+             [ {:name :test-lookup
+                :type :enumeration
+                :lookup-table {:gini SplitRule/GINI
+                               :entropy SplitRule/ENTROPY
+                               }
+                :default :gini}]}
+            nil
+            {:test-lookup :entropy }
+            ) "prefix.test.lookup"
+
+           ) "ENTROPY")))
