@@ -28,3 +28,17 @@
 (deftest smile-classification-test
   (doseq [classify-model smile-classification-models]
     (verify/basic-classification {:model-type classify-model})))
+
+
+
+
+;; take  long
+
+;; (deftest smile-regression-autogridsearch-test
+;;   (doseq [regression-model smile-regression-models]
+;;     (verify/auto-gridsearch-regression {:model-type regression-model 0.5 })))
+
+
+;; (deftest smile-classification-autogridsearch-test
+;;   (doseq [classify-model smile-classification-models]
+;;     (verify/auto-gridsearch-classification {:model-type classify-model} 0.5)))
