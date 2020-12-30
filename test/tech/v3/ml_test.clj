@@ -31,5 +31,13 @@
 
                                        }))
 
+  (ml/train dataset {:model-type :discrete-naive-bayes
+                                     :discrete-naive-bayes-model :multinomial
+                                     :sparse-column :bow-sparse
+                                     :k 5
+                                     :preprocess {:fn preprocess
+                                                  :vocab-size 1000}
+
+                                     })
 
   )

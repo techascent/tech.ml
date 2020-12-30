@@ -72,7 +72,7 @@
   * `:target-columns - vector of column names."
   [dataset options]
   (let [{:keys [train-fn]} (options->model-def options)
-        feature-ds (cf/feature dataset)
+        feature-ds (preprocess (cf/feature dataset) options)
         _ (errors/when-not-error (> (ds/row-count feature-ds) 0)
                                  "No features provided")
         target-ds (cf/target dataset)
@@ -113,7 +113,7 @@ see tech.v3.dataset.modelling/set-inference-target")
     value and values that describe the probability distribution."
   [dataset model]
   (let [{:keys [predict-fn] :as model-def} (options->model-def (:options model))
-        feature-ds (ds/select-columns dataset (:feature-columns model))
+        feature-ds (preprocess (ds/select-columns dataset (:feature-columns model)) (:options model))
         label-columns (:target-columns model)
         thawed-model (thaw-model model model-def)
         pred-ds (predict-fn feature-ds
@@ -174,9 +174,7 @@ see tech.v3.dataset.modelling/set-inference-target")
 (defn- do-k-fold
   [options loss-fn target-colname ds-seq]
   (let [models (mapv (fn [{:keys [train-ds test-ds]}]
-                       (let [train-ds (preprocess train-ds options)
-                             model (train train-ds options)
-                             test-ds (preprocess test-ds options)
+                       (let [model (train train-ds options)
                              predictions (predict test-ds model)]
                          (assoc model :loss (loss-fn (predictions target-colname)
                                                      (test-ds target-colname)))))
