@@ -6,7 +6,23 @@
             [tech.v3.ml.verify :as verify]
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.modelling :as ds-mod]
-            [tech.v3.libs.xgboost]))
+            [tech.v3.libs.xgboost]
+            [tech.v3.datatype :as dtype]
+            [tech.v3.dataset :as ds]
+            [tech.v3.dataset.modelling :as ds-mod]
+            [tech.v3.libs.smile.discrete-nb :as nb]
+            [tech.v3.libs.smile.nlp :as nlp]
+            [tech.v3.libs.smile.discrete-nb :as nb]
+
+            [tech.v3.dataset.column-filters :as cf]
+            )
+
+  (:import [xgboost CRS]
+           [ml.dmlc.xgboost4j LabeledPoint]
+           [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
+           [java.io ByteArrayInputStream]
+           )
+  )
 
 
 (deftest basic
@@ -50,3 +66,42 @@
 
 (deftest classification-gridsearch
   (verify/auto-gridsearch-classification {:model-type :xgboost/classification}))
+
+
+(deftest sparse-train-does-not-crash []
+    (let [reviews
+          (->
+           (ds/->dataset "test/data/reviews.csv.gz" {:key-fn keyword })
+           (ds/select-columns [:Text :Score])
+           (nlp/count-vectorize :Text :bow nlp/default-text->bow)
+           (nb/bow->SparseArray :bow :bow-sparse 100)
+           (ds/drop-columns [:Text :bow])
+           (ds/update-column :Score
+                             (fn [col]
+                               (let [val-map {0 :c0
+                                              1 :c1
+                                              2 :c2
+                                              3 :c3
+                                              4 :c4
+                                              5 :c5}]
+                                 (dtype/emap val-map :keyword col))))
+           (ds/categorical->number cf/categorical)
+           (ds-mod/set-inference-target :Score))
+          folds
+          (ml/train-k-fold reviews {:model-type :xgboost/classification
+                                    :sparse-column :bow-sparse})
+          explanation (ml/explain folds)
+          ]))
+
+(comment
+
+  (def trained-model
+    (ml/train reviews {:model-type :xgboost/classification
+                       :sparse-column :bow-sparse}))
+
+  (ml/predict reviews trained-model )
+
+  (def folds
+    (ml/train-k-fold reviews {:model-type :xgboost/classification
+                              :sparse-column :bow-sparse}))
+  (ml/explain folds))
