@@ -1,29 +1,15 @@
 (ns tech.v3.libs.xgboost-test
   (:require [clojure.test :refer [deftest is]]
-            [tech.v3.datatype.functional :as dfn]
-            [tech.v3.ml :as ml]
-            [tech.v3.ml.loss :as loss]
-            [tech.v3.ml.verify :as verify]
             [tech.v3.dataset :as ds]
+            [tech.v3.dataset.column-filters :as cf]
             [tech.v3.dataset.modelling :as ds-mod]
-            [tech.v3.libs.xgboost]
             [tech.v3.datatype :as dtype]
-            [tech.v3.dataset :as ds]
-            [tech.v3.dataset.modelling :as ds-mod]
+            [tech.v3.datatype.functional :as dfn]
             [tech.v3.libs.smile.discrete-nb :as nb]
             [tech.v3.libs.smile.nlp :as nlp]
-            [tech.v3.libs.smile.discrete-nb :as nb]
-
-            [tech.v3.dataset.column-filters :as cf]
-            )
-
-  (:import [xgboost CRS]
-           [ml.dmlc.xgboost4j LabeledPoint]
-           [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
-           [java.io ByteArrayInputStream]
-           )
-  )
-
+            [tech.v3.ml :as ml]
+            [tech.v3.ml.loss :as loss]
+            [tech.v3.ml.verify :as verify]))
 
 (deftest basic
   (verify/basic-regression {:model-type :xgboost/regression}))
