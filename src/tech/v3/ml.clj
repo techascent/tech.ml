@@ -53,11 +53,10 @@
 
 
 (defn preprocess [dataset options]
-  (let [fn (get-in options [:preprocess :fn] identity)]
-    (fn dataset (:preprocess options))
-    )
+  (let [fun (get-in options [:preprocess :fn] identity)]
+    (fun dataset (:preprocess options))
 
-  )
+    ))
 
 (defn train
   "Given a dataset and an options map produce a model.  The model-type keyword in the
@@ -72,7 +71,9 @@
   * `:target-columns - vector of column names."
   [dataset options]
   (let [{:keys [train-fn]} (options->model-def options)
-        feature-ds (preprocess (cf/feature dataset) options)
+        preprocess-result (preprocess (cf/feature dataset) options)
+        feature-ds (:dataset preprocess-result)
+        options (merge options (:options preprocess-result))
         _ (errors/when-not-error (> (ds/row-count feature-ds) 0)
                                  "No features provided")
         target-ds (cf/target dataset)
@@ -113,13 +114,15 @@ see tech.v3.dataset.modelling/set-inference-target")
     value and values that describe the probability distribution."
   [dataset model]
   (let [{:keys [predict-fn] :as model-def} (options->model-def (:options model))
-        feature-ds (preprocess (ds/select-columns dataset (:feature-columns model)) (:options model))
+        preprocess-result (preprocess dataset (:options model))
+        dataset (:dataset preprocess-result)
+        model (assoc model :options (merge (:options model) (:options preprocess-result)))
+        feature-ds (ds/select-columns dataset (:feature-columns model))
         label-columns (:target-columns model)
         thawed-model (thaw-model model model-def)
         pred-ds (predict-fn feature-ds
                             thawed-model
-                            model)
-        ]
+                            model)]
 
     (if (= :classification (:model-type (meta pred-ds)))
       (-> (ds-mod/probability-distributions->label-column

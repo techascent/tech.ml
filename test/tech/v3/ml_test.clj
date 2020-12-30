@@ -18,8 +18,11 @@
 
 
   (defn preprocess [ds options]
-    (-> ds
-        (nb/bow->SparseArray :bow :bow-sparse (:vocab-size options))))
+    {:dataset
+     (-> ds
+         (nb/bow->SparseArray :bow :bow-sparse (:vocab-size options)))
+     :options (merge  options {:a 1})
+     })
 
   (def models
     (ml/train-auto-gridsearch dataset {:model-type :discrete-naive-bayes
@@ -30,14 +33,14 @@
                                                     :vocab-size (ml-gs/linear 100 10000)}
 
                                        }))
+  (def model
+    (ml/train dataset {:model-type :discrete-naive-bayes
+                       :discrete-naive-bayes-model :multinomial
+                       :sparse-column :bow-sparse
+                       :k 5
+                       :preprocess {:fn preprocess
+                                    :vocab-size 1000}
 
-  (ml/train dataset {:model-type :discrete-naive-bayes
-                                     :discrete-naive-bayes-model :multinomial
-                                     :sparse-column :bow-sparse
-                                     :k 5
-                                     :preprocess {:fn preprocess
-                                                  :vocab-size 1000}
-
-                                     })
+                       }))
 
   )
