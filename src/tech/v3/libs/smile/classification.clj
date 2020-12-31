@@ -10,7 +10,7 @@
             [tech.v3.ml :as ml]
             [tech.v3.libs.smile.protocols :as smile-proto]
             [tech.v3.libs.smile.data :as smile-data])
-  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree]
+  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree RandomForest]
            [smile.base.cart SplitRule]
            [smile.data.formula Formula]
            [smile.data DataFrame]
@@ -93,8 +93,7 @@
     :predictor double-array-predict-posterior}
 
    :decision-tree
-   {:attributes #{:probabilities :attributes}
-    :name :decision-tree
+   {:name :decision-tree
     :options [{:name :max-nodes
                :type :int32
                :default 100}
@@ -252,10 +251,10 @@
    ;;                       :alpha (ml-gs/linear [0.0 1.0])}}
 
 
-   ;; :random-forest {:attributes #{:probabilities}
-   ;;                 :class-name "RandomForest"
-   ;;                 :datatypes #{:float64-array}
-   ;;                 :name :random-forest}
+    :random-forest {:name :random-forest
+                    :constructor #(RandomForest/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
+                    :predictor tuple-predict-posterior
+                    }
    ;; :rbf-network {:attributes #{}
    ;;               :class-name "RBFNetwork"
    ;;               :datatypes #{}
@@ -327,7 +326,6 @@
                         dtype/elemwise-cast :int32))
         data (smile-data/dataset->smile-dataframe dataset)
         properties (smile-proto/options->properties entry-metadata dataset options)
-        _ (println properties)
         ctor (:constructor entry-metadata)
         model (ctor formula data properties)]
     (model/model->byte-array model)))
@@ -375,6 +373,5 @@
     (def split-data (ds-mod/train-test-split ds))
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
-    (def model (ml/train train-ds {:model-type :smile.classification/decision-tree
-                                   :split-rule SplitRule/CLASSIFICATION_ERROR}))
+    (def model (ml/train train-ds {:model-type :smile.classification/random-forest}))
     (def prediction (ml/predict test-ds model))))
