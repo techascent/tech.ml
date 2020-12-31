@@ -51,9 +51,14 @@
   [model-kwd]
   (:hyperparameters (options->model-def {:model-type model-kwd})))
 
+(defn identity-preprocess [ds options]
+  {:dataset ds
+  :options options
+     }
+  )
 
 (defn preprocess [dataset options]
-  (let [fun (get-in options [:preprocess :fn] identity)]
+  (let [fun (get-in options [:preprocess :fn] identity-preprocess)]
     (fun dataset (:preprocess options))
 
     ))
