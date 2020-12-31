@@ -80,4 +80,4 @@
              (first))]
      (is (< avg-loss max-avg-loss))))
   ([options-map]
-   (basic-classification options-map 0.5)))
+   (auto-gridsearch-classification options-map 0.5)))
