@@ -104,8 +104,6 @@
                :type :int32 
                :default 20}
               {:name :split-rule
-               ;; :type :enumeration
-               ;; :class-type :string
                :type :string
                :lookup-table split-rule-lookup-table
                :default :gini}]
@@ -254,7 +252,21 @@
     :random-forest {:name :random-forest
                     :constructor #(RandomForest/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
                     :predictor tuple-predict-posterior
-                    }
+                    :options [{:name :trees :type :int32 :default 500}
+                              {:name :mtry :type :int32 :default 0}
+                              {:name :split-rule
+                               :type :string
+                               :lookup-table split-rule-lookup-table
+                               :default :gini}
+                              {:name :max-depth :type :int32 :default 20}
+                              {:name :max-nodes :type :int32 :default (fn [dataset props] (unchecked-int (max 5 (/ (ds/row-count dataset) 5))))
+
+                               }
+                              {:name :node-size :type :int32 :default 5}
+                              {:name :sample-rate :type :float32 :default 1.0}
+                              {:name :class-weight :type :string :default nil}
+                              ]
+                    :property-name-stem "smile.random.forest"}
    ;; :rbf-network {:attributes #{}
    ;;               :class-name "RBFNetwork"
    ;;               :datatypes #{}

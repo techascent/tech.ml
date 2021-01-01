@@ -177,7 +177,7 @@
 
               {:name :max-nodes
                :type :int32
-               :default #(unchecked-int (max 5 (/ (ds/row-count %) 5)))
+               :default (fn [dataset props] (unchecked-int (max 5 (/ (ds/row-count dataset) 5))))
                :range :>0}
 
               {:name :node-size
