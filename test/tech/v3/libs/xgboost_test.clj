@@ -7,9 +7,11 @@
             [tech.v3.datatype.functional :as dfn]
             [tech.v3.libs.smile.discrete-nb :as nb]
             [tech.v3.libs.smile.nlp :as nlp]
+            [tech.v3.libs.xgboost]
             [tech.v3.ml :as ml]
             [tech.v3.ml.loss :as loss]
-            [tech.v3.ml.verify :as verify]))
+            [tech.v3.ml.verify :as verify]
+            ))
 
 (deftest basic
   (verify/basic-regression {:model-type :xgboost/regression}))
