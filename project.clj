@@ -13,6 +13,7 @@ of how to use this library."
                  [org.bytedeco/openblas-platform "0.3.10-1.5.4"]
                  [pppmap/pppmap "0.2.1"]]
 
+
   :profiles
   {:codox
    {:dependencies [[codox-theme-rdash "0.1.2"]]

@@ -28,11 +28,11 @@
    (into-array Integer/TYPE)))
 
 
-(defn bow->sparse-array [ds bow-col indices-col vocab-size]
+(defn bow->sparse-array [ds bow-col indices-col create-vocab-fn]
   "Converts a bag-of-word column `bow-col` to sparse indices column `indices-col`,
    as needed by the Maxent model.
    `vocab size` is the size of vocabluary used, sorted by token frequency "
-  (nlp/bow->something-sparse ds bow-col indices-col vocab-size bow->sparse-indices))
+  (nlp/bow->something-sparse ds bow-col indices-col create-vocab-fn bow->sparse-indices))
 
 
 (defn maxent-train [feature-ds target-ds options maxent-type]

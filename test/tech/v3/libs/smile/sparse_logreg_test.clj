@@ -13,7 +13,7 @@
    (ds/select-columns [:Text :Score])
    (ds/update-column :Score #(map dec %))
    (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-   (nb/bow->SparseArray :bow :bow-sparse 100)
+   (nb/bow->SparseArray :bow :bow-sparse #(nlp/->vocabulary-top-n % 100))
    (ds-mod/set-inference-target :Score)))
 
 (deftest does-not-crash

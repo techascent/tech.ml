@@ -62,7 +62,7 @@
            (ds/->dataset "test/data/reviews.csv.gz" {:key-fn keyword })
            (ds/select-columns [:Text :Score])
            (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-           (nb/bow->SparseArray :bow :bow-sparse 100)
+           (nb/bow->SparseArray :bow :bow-sparse  #(nlp/->vocabulary-top-n % 100))
            (ds/drop-columns [:Text :bow])
            (ds/update-column :Score
                              (fn [col]

@@ -58,12 +58,10 @@
          reverse
          (take n)
          keys)
-        vocab->index-map (zipmap vocabulary (range))]
+        ]
+    vocabulary
 
-    {:vocab vocabulary
-     :vocab->index-map vocab->index-map
-     :index->vocab-map (clojure.set/map-invert vocab->index-map)
-     }))
+    ))
 
 (defn count-vectorize
   ([ds text-col bow-col text->bow-fn options]
@@ -83,11 +81,21 @@
    )
   )
 
+(defn create-vocab-all [bow ]
+  (keys
+   (apply merge bow))
 
-(defn bow->something-sparse [ds bow-col indices-col vocab-size bow->sparse-fn]
+  )
+
+(defn bow->something-sparse [ds bow-col indices-col create-vocab-fn bow->sparse-fn]
   "Converts a bag-of-word column `bow-col` to a sparse data column `indices-col`.
    The exact transformation to the sparse representtaion is given by `bow->sparse-fn`"
-  (let [vocabulary (->vocabulary-top-n (get ds bow-col) vocab-size)
+  (let [vocabulary-list (create-vocab-fn (get ds bow-col))
+        vocab->index-map (zipmap vocabulary-list  (range))
+        vocabulary {:vocab vocabulary-list
+                    :vocab->index-map vocab->index-map
+                    :index->vocab-map (clojure.set/map-invert vocab->index-map)
+                    }
         vocab->index-map (:vocab->index-map vocabulary)
         ds
         (vary-meta ds assoc
@@ -101,3 +109,54 @@
        1000
        #(bow->sparse-fn % vocab->index-map)
        (get ds bow-col))))))
+
+
+
+(defn num-docs-containinig-term [term bows]
+  (apply +
+         (map
+          #(if (contains? % term)
+             1 0
+
+             )
+          bows
+          )))
+
+(defn idf [term bows]
+  (let [n (count bows)]
+    (Math/log (/ n (+ 1 (num-docs-containinig-term term bows))))))
+
+
+(defn tf [term bow]
+  (/
+   (get bow term 0)
+   (apply + (vals bow))
+   )
+  )
+
+
+(defn tfidf [term bow bows]
+  (* (tf term bow)  (idf term bows) )
+
+  )
+
+
+(defn bow->tfidf [ds bow-column tfidf-column]
+  (let [bows (get ds bow-column)
+        tfidf-column (ds/new-column tfidf-column
+                                    (ppp/ppmap-with-progress "tfidf" 100
+                                     (fn [bow]
+                                       (let [tfidfs
+                                             (map
+                                              #(hash-map :term %
+                                                         :tfidf  (tfidf % bow bows))
+                                              (keys bow))
+
+
+                                             ]
+                                         (zipmap (map :term tfidfs) (map :tfidf tfidfs))
+
+                                         ))
+                                     bows))]
+    (ds/add-column ds tfidf-column)
+    ))

@@ -15,7 +15,7 @@
    (ds/select-columns [:Text :Score])
    (ds/update-column :Score #(map dec %))
    (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-   (nb/bow->SparseArray :bow :bow-sparse 100)
+   (nb/bow->SparseArray :bow :bow-sparse #(nlp/->vocabulary-top-n % 100) )
    (ds-mod/set-inference-target :Score)))
 
 
@@ -53,3 +53,28 @@
               prediction (ml/predict (ds/head reviews 10) trained-model)]
           prediction))
        [4 4 3 2 3 4 4 4 4 4])))
+
+
+
+
+(comment
+
+  (def reviews (get-reviews))
+
+
+  (def reviews
+    (-> reviews
+        (nlp/bow->tfidf :bow :tfidf)
+
+        ))
+
+  (def reviews
+    (nb/bow->SparseArray reviews :tfidf :sparse  (fn [bows] (nlp/->vocabulary-top-n bows 100))))
+
+  (def trained-model
+    (ml/train reviews {:model-type :discrete-naive-bayes
+                       :discrete-naive-bayes-model :multinomial
+                       :sparse-column :sparse
+                       :k 5}))
+  (ml/predict reviews trained-model)
+  )
