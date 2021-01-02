@@ -327,7 +327,6 @@
                         dtype/elemwise-cast :int32))
         data (smile-data/dataset->smile-dataframe dataset)
         properties (smile-proto/options->properties entry-metadata dataset options)
-        _ (println properties)
         ctor (:constructor entry-metadata)
         model (ctor formula data properties)]
     (model/model->byte-array model)))
