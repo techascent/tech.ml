@@ -56,9 +56,10 @@
   (let [pname-stem (:property-name-stem metadata)]
     (->> (:options metadata)
          (reduce (fn [^Properties props {:keys [name default lookup-table]}]
-
-                   (let [default (or (get lookup-table default)
-                                     default)
+                   (let [default (if (fn? default)
+                                   (default dataset props)
+                                   (or (get lookup-table default)
+                                       default))
                          value (get options name)
                          value (get lookup-table value value)
                          ]

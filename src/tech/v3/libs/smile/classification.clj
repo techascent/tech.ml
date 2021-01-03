@@ -10,7 +10,7 @@
             [tech.v3.ml :as ml]
             [tech.v3.libs.smile.protocols :as smile-proto]
             [tech.v3.libs.smile.data :as smile-data])
-  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree]
+  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree RandomForest]
            [smile.base.cart SplitRule]
            [smile.data.formula Formula]
            [smile.data DataFrame]
@@ -93,8 +93,7 @@
     :predictor double-array-predict-posterior}
 
    :decision-tree
-   {:attributes #{:probabilities :attributes}
-    :name :decision-tree
+   {:name :decision-tree
     :options [{:name :max-nodes
                :type :int32
                :default 100}
@@ -105,8 +104,6 @@
                :type :int32 
                :default 20}
               {:name :split-rule
-               ;; :type :enumeration
-               ;; :class-type :string
                :type :string
                :lookup-table split-rule-lookup-table
                :default :gini}]
@@ -252,10 +249,24 @@
    ;;                       :alpha (ml-gs/linear [0.0 1.0])}}
 
 
-   ;; :random-forest {:attributes #{:probabilities}
-   ;;                 :class-name "RandomForest"
-   ;;                 :datatypes #{:float64-array}
-   ;;                 :name :random-forest}
+    :random-forest {:name :random-forest
+                    :constructor #(RandomForest/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
+                    :predictor tuple-predict-posterior
+                    :options [{:name :trees :type :int32 :default 500}
+                              {:name :mtry :type :int32 :default 0}
+                              {:name :split-rule
+                               :type :string
+                               :lookup-table split-rule-lookup-table
+                               :default :gini}
+                              {:name :max-depth :type :int32 :default 20}
+                              {:name :max-nodes :type :int32 :default (fn [dataset props] (unchecked-int (max 5 (/ (ds/row-count dataset) 5))))
+
+                               }
+                              {:name :node-size :type :int32 :default 5}
+                              {:name :sample-rate :type :float32 :default 1.0}
+                              {:name :class-weight :type :string :default nil}
+                              ]
+                    :property-name-stem "smile.random.forest"}
    ;; :rbf-network {:attributes #{}
    ;;               :class-name "RBFNetwork"
    ;;               :datatypes #{}
@@ -374,6 +385,5 @@
     (def split-data (ds-mod/train-test-split ds))
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
-    (def model (ml/train train-ds {:model-type :smile.classification/decision-tree
-                                   :split-rule SplitRule/CLASSIFICATION_ERROR}))
+    (def model (ml/train train-ds {:model-type :smile.classification/random-forest}))
     (def prediction (ml/predict test-ds model))))
