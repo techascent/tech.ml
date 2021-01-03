@@ -107,6 +107,29 @@
   (model-type->xgboost-objective :multiclass-softprob))
 
 
+
+(defn- sparse->labeled-point [sparse target]
+  (let [x-i-s
+        (map
+         #(hash-map :i  (.i %) :x (.x %))
+         (iterator-seq
+          (.iterator sparse)))]
+    (LabeledPoint. target
+                   (into-array Integer/TYPE (map :i x-i-s))
+                   (into-array Float/TYPE (map :x x-i-s)))))
+
+(defn- sparse-feature->dmatrix [feature-ds target-ds sparse-column]
+  (DMatrix.
+   (.iterator
+    (map
+     (fn [features target ] (sparse->labeled-point features target))
+     (get feature-ds sparse-column)
+     (or  (get target-ds (first (ds-mod/inference-target-column-names target-ds)))
+          (repeat 0.0)
+          ))) nil))
+
+
+
 (defn- dataset->labeled-point-iterator
   "Create an iterator to labeled points from a possibly quite large
   sequence of maps.  Sets expected length to length of first entry"
@@ -159,6 +182,10 @@
    :round (ml-gs/linear 5 46 5 :int64)
    :alpha (ml-gs/linear 0.01 0.31 30)})
 
+(defn ->dmatrix [feature-ds target-ds sparse-column]
+  (if sparse-column
+    (sparse-feature->dmatrix feature-ds target-ds sparse-column)
+    (dataset->dmatrix feature-ds target-ds)))
 
 (defn- train
   [feature-ds label-ds options]
@@ -166,16 +193,18 @@
   ;;the machine.
   (locking #'multiclass-objective?
     (let [objective (options->objective options)
-          train-dmat (dataset->dmatrix feature-ds label-ds)
+          sparse-column-or-nil (:sparse-column options)
+          train-dmat (->dmatrix feature-ds label-ds sparse-column-or-nil)
           base-watches (or (:watches options) {})
           feature-cnames (ds/column-names feature-ds)
           target-cnames (ds/column-names label-ds)
           watches (->> base-watches
                        (reduce (fn [^Map watches [k v]]
                                  (.put watches (ds-utils/column-safe-name k)
-                                       (dataset->dmatrix
+                                       (->dmatrix
                                         (ds/select-columns v feature-cnames)
-                                        (ds/select-columns v target-cnames)))
+                                        (ds/select-columns v target-cnames)
+                                        sparse-column-or-nil))
                                  watches)
                                ;;Linked hash map to preserve order
                                (LinkedHashMap.)))
@@ -252,7 +281,9 @@ c/xgboost4j/java/XGBoost.java#L208"))
 
 (defn- predict
   [feature-ds thawed-model {:keys [target-columns target-categorical-maps options]}]
-  (let [predict-ds (->> (dataset->dmatrix feature-ds)
+  (let [sparse-column-or-nil (:sparse-column options)
+        dmatrix (->dmatrix feature-ds nil sparse-column-or-nil)
+        predict-ds (->> dmatrix
                         (.predict ^Booster thawed-model)
                         (dtt/->tensor))
         target-cname (first target-columns)]
@@ -265,29 +296,34 @@ c/xgboost4j/java/XGBoost.java#L208"))
 
 
 (defn- explain
-  [thawed-model {:keys [feature-columns]}
+  [thawed-model {:keys [feature-columns options]}
    {:keys [importance-type]
     :or {importance-type "gain"}}]
   (let [^Booster booster thawed-model
-        feature-col-map (->> feature-columns
-                             (map (fn [name]
-                                    [name (ds-utils/column-safe-name name)]))
-                             (into {}))
-        feature-columns (into-array String (map #(get feature-col-map %)
-                                                feature-columns))
-        ^Map score-map (.getScore booster
-                                  ^"[Ljava.lang.String;" feature-columns
-                                  ^String importance-type)
-          col-inv-map (set/map-invert feature-col-map)]
-      ;;It's not a great map...Something is off about iteration so I have
-      ;;to transform it back into something sane.
-      (->> (keys score-map)
-           (map (fn [item-name]
-                  {:importance-type importance-type
-                   :colname (get col-inv-map item-name)
-                   (keyword importance-type) (.get score-map item-name)}))
-           (sort-by (keyword importance-type) >)
-           (ds/->>dataset))))
+        sparse-column-or-nil (:sparse-column options)]
+    (if sparse-column-or-nil
+      (let [score-map (.getScore booster "" importance-type)]
+        (ds/->dataset {:feature (keys score-map)
+                       (keyword importance-type) (vals score-map) }))
+      (let [feature-col-map (->> feature-columns
+                                 (map (fn [name]
+                                        [name (ds-utils/column-safe-name name)]))
+                                 (into {}))
+            feature-columns (into-array String (map #(get feature-col-map %)
+                                                    feature-columns))
+            ^Map score-map (.getScore booster
+                                      ^"[Ljava.lang.String;" feature-columns
+                                      ^String importance-type)
+            col-inv-map (set/map-invert feature-col-map)]
+        ;;It's not a great map...Something is off about iteration so I have
+        ;;to transform it back into something sane.
+        (->> (keys score-map)
+             (map (fn [item-name]
+                    {:importance-type importance-type
+                     :colname (get col-inv-map item-name)
+                     (keyword importance-type) (.get score-map item-name)}))
+             (sort-by (keyword importance-type) >)
+             (ds/->>dataset))))))
 
 
 (doseq [objective (concat [:regression :classification]
@@ -310,6 +346,7 @@ c/xgboost4j/java/XGBoost.java#L208"))
   (def test-ds (:test-ds split-data))
   (def model (ml/train train-ds {:model-type :xgboost/classification}))
   (def predictions (ml/predict test-ds model))
+  (ml/explain model)
   (require '[tech.v3.ml.loss :as loss])
   (require '[tech.v3.dataset.categorical :as ds-cat])
 
