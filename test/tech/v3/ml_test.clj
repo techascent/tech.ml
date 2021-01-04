@@ -31,7 +31,7 @@
                                            :discrete-naive-bayes-model :multinomial
                                            :sparse-column :bow-sparse
                                            :k 5
-                                           :preprocess-fn preprocess
+                                           :preprocess-fn 'tech.v3.ml-test/preprocess
                                            :vocab-size (ml-gs/linear 100 10000)}
                                   {:n-gridsearch 5}
                                   )]
@@ -47,7 +47,7 @@
                            :discrete-naive-bayes-model :multinomial
                            :sparse-column :bow-sparse
                            :k 5
-                           :preprocess-fn preprocess
+                           :preprocess-fn 'tech.v3.ml-test/preprocess
                            :vocab-size 1000
 
                            })]

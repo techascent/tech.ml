@@ -58,7 +58,7 @@
   )
 
 (defn preprocess [dataset options]
-  (let [fun (get options :preprocess-fn identity-preprocess)]
+  (let [fun (requiring-resolve (get options :preprocess-fn 'tech.v3.ml/identity-preprocess))]
     (fun dataset options)
 
     ))
