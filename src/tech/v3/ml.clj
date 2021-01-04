@@ -21,12 +21,15 @@
   produces a inferred dataset."
   [model-kwd train-fn predict-fn {:keys [hyperparameters
                                          thaw-fn
-                                         explain-fn]}]
+                                         explain-fn
+]}]
   (swap! model-definitions* assoc model-kwd {:train-fn train-fn
                                              :predict-fn predict-fn
                                              :hyperparameters hyperparameters
                                              :thaw-fn thaw-fn
-                                             :explain-fn explain-fn})
+                                             :explain-fn explain-fn
+
+                                             })
   :ok)
 
 (defn model-definition-names
@@ -48,6 +51,13 @@
   [model-kwd]
   (:hyperparameters (options->model-def {:model-type model-kwd})))
 
+
+(defn preprocess [dataset options]
+  (let [fn (get-in options [:preprocess :fn] identity)]
+    (fn dataset (:preprocess options))
+    )
+
+  )
 
 (defn train
   "Given a dataset and an options map produce a model.  The model-type keyword in the
@@ -72,13 +82,13 @@ see tech.v3.dataset.modelling/set-inference-target")
         model-data (train-fn feature-ds target-ds options)
         cat-maps (ds-mod/dataset->categorical-xforms target-ds)]
     (merge
-      {:model-data model-data
-       :options options
-       :id (UUID/randomUUID)
-       :feature-columns (vec (ds/column-names feature-ds))
-       :target-columns (vec (ds/column-names target-ds))}
-      (when-not (== 0 (count cat-maps))
-        {:target-categorical-maps cat-maps}))))
+     {:model-data model-data
+      :options options
+      :id (UUID/randomUUID)
+      :feature-columns (vec (ds/column-names feature-ds))
+      :target-columns (vec (ds/column-names target-ds))}
+     (when-not (== 0 (count cat-maps))
+       {:target-categorical-maps cat-maps}))))
 
 
 (defn thaw-model
@@ -108,7 +118,9 @@ see tech.v3.dataset.modelling/set-inference-target")
         thawed-model (thaw-model model model-def)
         pred-ds (predict-fn feature-ds
                             thawed-model
-                            model)]
+                            model)
+        ]
+
     (if (= :classification (:model-type (meta pred-ds)))
       (-> (ds-mod/probability-distributions->label-column
            pred-ds (first label-columns))
@@ -162,7 +174,9 @@ see tech.v3.dataset.modelling/set-inference-target")
 (defn- do-k-fold
   [options loss-fn target-colname ds-seq]
   (let [models (mapv (fn [{:keys [train-ds test-ds]}]
-                       (let [model (train train-ds options)
+                       (let [train-ds (preprocess train-ds options)
+                             model (train train-ds options)
+                             test-ds (preprocess test-ds options)
                              predictions (predict test-ds model)]
                          (assoc model :loss (loss-fn (predictions target-colname)
                                                      (test-ds target-colname)))))
@@ -220,6 +234,7 @@ see tech.v3.dataset.modelling/set-inference-target")
                           n-gridsearch 75
                           n-result-models 5}
                      :as gridsearch-options}]
+
    (let [loss-fn (or loss-fn (default-loss-fn dataset))
          options (merge (hyperparameters (:model-type options)) options)
          gs-seq (take n-gridsearch (ml-gs/sobol-gridsearch options))
@@ -230,6 +245,7 @@ see tech.v3.dataset.modelling/set-inference-target")
      (->> gs-seq
           (pmap #(do-k-fold % loss-fn target-colname ds-seq))
           (sort-by :avg-loss)
-          (take n-result-models))))
+          (take n-result-models)
+          )))
   ([dataset options]
    (train-auto-gridsearch dataset options nil)))
