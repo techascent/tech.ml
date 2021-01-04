@@ -58,8 +58,8 @@
   )
 
 (defn preprocess [dataset options]
-  (let [fun (get-in options [:preprocess :fn] identity-preprocess)]
-    (fun dataset (:preprocess options))
+  (let [fun (get options :preprocess-fn identity-preprocess)]
+    (fun dataset options)
 
     ))
 
