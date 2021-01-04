@@ -10,7 +10,7 @@
             [tech.v3.ml :as ml]
             [tech.v3.libs.smile.protocols :as smile-proto]
             [tech.v3.libs.smile.data :as smile-data])
-  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree RandomForest]
+  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree RandomForest KNN]
            [smile.base.cart SplitRule]
            [smile.data.formula Formula]
            [smile.data DataFrame]
@@ -49,6 +49,12 @@
         (let [posterior (double-array n-labels)]
           (.predict model (double-array (value-reader idx)) posterior)
           posterior)))))
+
+
+(defn construct-knn [^Formula formula ^DataFrame data-frame ^Properties props]
+  (KNN/fit (.toArray (.matrix  formula data-frame false))
+           (.toIntArray  (.y formula data-frame))))
+
 
 (def split-rule-lookup-table
   {:gini SplitRule/GINI
@@ -148,17 +154,16 @@
    ;;                                  :type :float64
    ;;                                  :default 0.7
    ;;                                  :range [0.0 1.0]}]}
-   ;; :knn {:attributes #{:probabilities :object-data}
-   ;;       :class-name "KNN"
-   ;;       :datatypes #{:float64-array}
-   ;;       :name :knn
-   ;;       :options [{:name :distance
-   ;;                  :type :distance
-   ;;                  :default {:distance-type :euclidean}}
-   ;;                 {:name :num-clusters
-   ;;                  :type :int32
-   ;;                  :default 5}]
-   ;;       :gridsearch-options {:num-clusters (ml-gs/linear-long [2 100])}}
+    :knn {
+          :name :knn
+          :options [{:name :k
+                     :type :int32
+                     :default 5}
+                   ]
+          :constructor #(construct-knn ^Formula %1 ^DataFrame %2  ^Properties %3)
+          :predictor double-array-predict-posterior
+          :property-name-stem "smile.knn"
+          :gridsearch-options {:k (ml-gs/categorical [2 100])}}
    ;;
    ;; ;;Not supported at this time because constructor patter is unique
    ;; :maxent {:attributes #{:probabilities}
@@ -385,5 +390,5 @@
     (def split-data (ds-mod/train-test-split ds))
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
-    (def model (ml/train train-ds {:model-type :smile.classification/random-forest}))
+    (def model (ml/train train-ds {:model-type :smile.classification/knn}))
     (def prediction (ml/predict test-ds model))))
