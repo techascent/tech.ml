@@ -6,7 +6,7 @@
            smile.nlp.stemmer.PorterStemmer
            [smile.nlp.tokenizer SimpleSentenceSplitter SimpleTokenizer]))
 
-;; )
+
 (defn default-text->bow [text]
   "Converts text to token counts (a map token -> count)"
   (let [normalizer (SimpleNormalizer/getInstance)

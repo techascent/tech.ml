@@ -8,8 +8,6 @@
             [clojure.test :refer (deftest is)]))
 
 (defn preprocess [ds options]
-    (def ds ds)
-    (def options options)
     {:dataset
      (-> ds
          (nb/bow->SparseArray :bow :bow-sparse (:vocab-size options)))
