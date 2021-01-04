@@ -10,7 +10,9 @@
 (defn preprocess [ds options]
     {:dataset
      (-> ds
-         (nb/bow->SparseArray :bow :bow-sparse (:vocab-size options)))
+         (nlp/count-vectorize :Text :bow nlp/default-text->bow options)
+         (nb/bow->SparseArray :bow :bow-sparse (:vocab-size options))
+         )
      :options (merge  options {:a 1})})
 
 (defn get-dataset []
@@ -18,8 +20,7 @@
    (ds/->dataset "test/data/reviews.csv.gz" {:key-fn keyword })
    (ds/select-columns [:Text :Score])
    (ds/update-column :Score #(map dec %))
-    (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-    (ds-mod/set-inference-target :Score)))
+   (ds-mod/set-inference-target :Score)))
 
 (deftest grid-search-takes-pre-process-options []
 
@@ -30,6 +31,8 @@
                                            :sparse-column :bow-sparse
                                            :k 5
                                            :preprocess-fn 'tech.v3.ml-test/preprocess
+                                           :stopwords (ml-gs/categorical [nil nil :default :google :comprehensive])
+
                                            :vocab-size (ml-gs/linear 100 10000)}
                                   {:n-gridsearch 5}
                                   )]
@@ -47,6 +50,5 @@
                            :k 5
                            :preprocess-fn 'tech.v3.ml-test/preprocess
                            :vocab-size 1000
-
                            })]
     (is (=  1 (get-in model [:options :a])))))
