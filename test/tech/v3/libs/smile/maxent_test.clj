@@ -21,7 +21,7 @@
                                          :sparse-column :bow-sparse})]
 
     (is (= 1 (get (first (:bow reviews)) "sweet")  ))
-    (is (= [120 240 452] (take 3 (-> reviews
+    (is (= [120 243 453] (take 3 (-> reviews
                                      :bow-sparse
                                      first))))
     (is (= 1001 (-> trained-model

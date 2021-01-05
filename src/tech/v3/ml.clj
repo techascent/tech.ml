@@ -21,12 +21,15 @@
   produces a inferred dataset."
   [model-kwd train-fn predict-fn {:keys [hyperparameters
                                          thaw-fn
-                                         explain-fn]}]
+                                         explain-fn
+]}]
   (swap! model-definitions* assoc model-kwd {:train-fn train-fn
                                              :predict-fn predict-fn
                                              :hyperparameters hyperparameters
                                              :thaw-fn thaw-fn
-                                             :explain-fn explain-fn})
+                                             :explain-fn explain-fn
+
+                                             })
   :ok)
 
 (defn model-definition-names
@@ -48,6 +51,17 @@
   [model-kwd]
   (:hyperparameters (options->model-def {:model-type model-kwd})))
 
+(defn identity-preprocess [ds options]
+  {:dataset ds
+  :options options
+     }
+  )
+
+(defn preprocess [dataset options]
+  (let [fun (requiring-resolve (get options :preprocess-fn 'tech.v3.ml/identity-preprocess))]
+    (fun dataset options)
+
+    ))
 
 (defn train
   "Given a dataset and an options map produce a model.  The model-type keyword in the
@@ -62,7 +76,9 @@
   * `:target-columns - vector of column names."
   [dataset options]
   (let [{:keys [train-fn]} (options->model-def options)
-        feature-ds (cf/feature dataset)
+        preprocess-result (preprocess (cf/feature dataset) options)
+        feature-ds (:dataset preprocess-result)
+        options (merge options (:options preprocess-result))
         _ (errors/when-not-error (> (ds/row-count feature-ds) 0)
                                  "No features provided")
         target-ds (cf/target dataset)
@@ -72,13 +88,13 @@ see tech.v3.dataset.modelling/set-inference-target")
         model-data (train-fn feature-ds target-ds options)
         cat-maps (ds-mod/dataset->categorical-xforms target-ds)]
     (merge
-      {:model-data model-data
-       :options options
-       :id (UUID/randomUUID)
-       :feature-columns (vec (ds/column-names feature-ds))
-       :target-columns (vec (ds/column-names target-ds))}
-      (when-not (== 0 (count cat-maps))
-        {:target-categorical-maps cat-maps}))))
+     {:model-data model-data
+      :options options
+      :id (UUID/randomUUID)
+      :feature-columns (vec (ds/column-names feature-ds))
+      :target-columns (vec (ds/column-names target-ds))}
+     (when-not (== 0 (count cat-maps))
+       {:target-categorical-maps cat-maps}))))
 
 
 (defn thaw-model
@@ -103,12 +119,16 @@ see tech.v3.dataset.modelling/set-inference-target")
     value and values that describe the probability distribution."
   [dataset model]
   (let [{:keys [predict-fn] :as model-def} (options->model-def (:options model))
+        preprocess-result (preprocess dataset (:options model))
+        dataset (:dataset preprocess-result)
+        model (assoc model :options (merge (:options model) (:options preprocess-result)))
         feature-ds (ds/select-columns dataset (:feature-columns model))
         label-columns (:target-columns model)
         thawed-model (thaw-model model model-def)
         pred-ds (predict-fn feature-ds
                             thawed-model
                             model)]
+
     (if (= :classification (:model-type (meta pred-ds)))
       (-> (ds-mod/probability-distributions->label-column
            pred-ds (first label-columns))
@@ -220,6 +240,7 @@ see tech.v3.dataset.modelling/set-inference-target")
                           n-gridsearch 75
                           n-result-models 5}
                      :as gridsearch-options}]
+
    (let [loss-fn (or loss-fn (default-loss-fn dataset))
          options (merge (hyperparameters (:model-type options)) options)
          gs-seq (take n-gridsearch (ml-gs/sobol-gridsearch options))
@@ -230,6 +251,7 @@ see tech.v3.dataset.modelling/set-inference-target")
      (->> gs-seq
           (pmap #(do-k-fold % loss-fn target-colname ds-seq))
           (sort-by :avg-loss)
-          (take n-result-models))))
+          (take n-result-models)
+          )))
   ([dataset options]
    (train-auto-gridsearch dataset options nil)))

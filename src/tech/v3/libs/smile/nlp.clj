@@ -4,25 +4,49 @@
             [tech.v3.dataset :as ds])
   (:import smile.nlp.normalizer.SimpleNormalizer
            smile.nlp.stemmer.PorterStemmer
-           [smile.nlp.tokenizer SimpleSentenceSplitter SimpleTokenizer]))
+           [smile.nlp.tokenizer SimpleSentenceSplitter SimpleTokenizer]
+           [smile.nlp.dictionary EnglishStopWords]
+           ))
 
-;; )
-(defn default-text->bow [text]
-  "Converts text to token counts (a map token -> count)"
+
+(defn resolve-stopwords [stopwords-option]
+  (if (keyword? stopwords-option)
+    (iterator-seq (.iterator (EnglishStopWords/valueOf (str/upper-case (name stopwords-option)))))
+    stopwords-option))
+
+(defn word-process [^PorterStemmer stemmer ^SimpleNormalizer normalizer ^String word]
+  (let [
+
+        ]
+    (-> word
+        (str/lower-case)
+        (#(.normalize normalizer %))
+        (#(.stem stemmer %)))))
+
+(defn default-text->bow [text options]
+  "Converts text to token counts (a map token -> count).
+   Takes an option `stopwords` being either a keyword naming a
+   default Smile dictionary (:default :google :comprehensive :mysql)
+   or a seq of stop words."
   (let [normalizer (SimpleNormalizer/getInstance)
+        stemmer (PorterStemmer.)
+        stopwords-option (:stopwords options)
+        stopwords  (resolve-stopwords stopwords-option)
+        processed-stop-words (map #(word-process stemmer normalizer %)  stopwords)
         tokenizer (SimpleTokenizer. )
         sentence-splitter (SimpleSentenceSplitter/getInstance)
-        stemmer (PorterStemmer.)]
-    (->> text
-         (.normalize normalizer)
-         (.split sentence-splitter)
-         (map #(.split tokenizer %))
-         (map seq)
-         flatten
-         (remove nil?)
-         (map #(.stem stemmer %))
-         (map str/lower-case)
-         frequencies)))
+        freqs
+        (->> text
+             (.normalize normalizer)
+             (.split sentence-splitter)
+             (map #(.split tokenizer %))
+             (map seq)
+             flatten
+             (remove nil?)
+             (map #(word-process stemmer normalizer % ))
+             frequencies
+             )]
+    (apply dissoc freqs processed-stop-words)))
 
 
 (defn ->vocabulary-top-n [bows n]
@@ -41,18 +65,23 @@
      :index->vocab-map (clojure.set/map-invert vocab->index-map)
      }))
 
-(defn count-vectorize [ds text-col bow-col text->bow-fn]
-  "Converts text column `text-col` to bag-of-words representation
+(defn count-vectorize
+  ([ds text-col bow-col text->bow-fn options]
+   "Converts text column `text-col` to bag-of-words representation
    in the form of a frequency-count map"
-  (ds/add-or-update-column
-   ds
-   (ds/new-column
-    bow-col
-    (ppp/ppmap-with-progress
-     "text->bow"
-     1000
-     text->bow-fn
-     (get ds text-col)))))
+   (ds/add-or-update-column
+    ds
+    (ds/new-column
+     bow-col
+     (ppp/ppmap-with-progress
+      "text->bow"
+      1000
+      #(text->bow-fn % options)
+      (get ds text-col)))))
+  ([ds text-col bow-col text->bow-fn]
+   (count-vectorize ds text-col bow-col text->bow-fn {})
+   )
+  )
 
 
 (defn bow->something-sparse [ds bow-col indices-col vocab-size bow->sparse-fn]
