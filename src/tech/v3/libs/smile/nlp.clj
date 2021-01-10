@@ -49,19 +49,7 @@
     (apply dissoc freqs processed-stop-words)))
 
 
-(defn ->vocabulary-top-n [bows n]
-  "Takes top-n most frequent tokens"
-  (let [vocabulary
-        (->>
-         (apply merge-with + bows)
-         (sort-by second)
-         reverse
-         (take n)
-         keys)
-        ]
-    vocabulary
 
-    ))
 
 (defn count-vectorize
   ([ds text-col bow-col text->bow-fn options]
@@ -81,10 +69,21 @@
    )
   )
 
+(defn ->vocabulary-top-n [bows n]
+  "Takes top-n most frequent tokens as vocabulary"
+  (let [vocabulary
+        (->>
+         (apply merge-with + bows)
+         (sort-by second)
+         reverse
+         (take n)
+         keys)]
+    vocabulary))
+
 (defn create-vocab-all [bow ]
+  "Uses all tokens as th vocabulary"
   (keys
    (apply merge bow))
-
   )
 
 (defn bow->something-sparse [ds bow-col indices-col create-vocab-fn bow->sparse-fn]
@@ -112,51 +111,49 @@
 
 
 
-(defn num-docs-containinig-term [term bows]
-  (apply +
-         (map
-          #(if (contains? % term)
-             1 0
 
-             )
-          bows
-          )))
+(defn tf-map [bows]
+  (loop [m {} bows bows]
+    (let [bow (first bows)
+          token-present (zipmap (keys bow) (repeat 1))]
 
-(defn idf [term bows]
-  (let [n (count bows)]
-    (Math/log (/ n (+ 1 (num-docs-containinig-term term bows))))))
+      (if (empty? bows)
+        m
+        (recur
+         (merge-with + m token-present)
+         (rest bows))))))
+
+
+(defn idf [tf-map term bows]
+  (let [n-t (count bows)
+        n-d (get tf-map term)]
+    (Math/log10 (/ n-t n-d ))))
 
 
 (defn tf [term bow]
   (/
    (get bow term 0)
-   (apply + (vals bow))
-   )
-  )
+   (apply + (vals bow))))
 
 
-(defn tfidf [term bow bows]
-  (* (tf term bow)  (idf term bows) )
-
-  )
+(defn tfidf [tf-map term bow bows]
+  (* (tf term bow)  (idf tf-map term bows) ))
 
 
 (defn bow->tfidf [ds bow-column tfidf-column]
+  "Calculates the tfidf score from bag-of-words (as token frequency maps)
+   in column `bow-column` and stores them in a new column `tfid-column` as maps of token->tfidf-score."
   (let [bows (get ds bow-column)
+        tf-map (tf-map bows)
         tfidf-column (ds/new-column tfidf-column
-                                    (ppp/ppmap-with-progress "tfidf" 100
+                                    (ppp/ppmap-with-progress
+                                     "tfidf" 1000
                                      (fn [bow]
-                                       (let [tfidfs
+                                       (let [terms (keys bow)
+                                             tfidfs
                                              (map
-                                              #(hash-map :term %
-                                                         :tfidf  (tfidf % bow bows))
-                                              (keys bow))
-
-
-                                             ]
-                                         (zipmap (map :term tfidfs) (map :tfidf tfidfs))
-
-                                         ))
+                                              #(tfidf tf-map % bow bows)
+                                              terms)]
+                                         (zipmap terms tfidfs)))
                                      bows))]
-    (ds/add-column ds tfidf-column)
-    ))
+    (ds/add-column ds tfidf-column)))
