@@ -46,7 +46,7 @@
   "Predict function for discrete naive bayes"
   (let [sparse-arrays (get feature-ds  (get-in model [:options :sparse-column]))
         target-colum (first (:target-columns model))
-        predictions (map #(.predict (:model-data model) %) sparse-arrays)
+        predictions (map #(.predict thawed-model %) sparse-arrays)
         ]
     (ds/->dataset {target-colum predictions})) )
 
