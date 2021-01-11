@@ -8,7 +8,9 @@
             [tech.v3.dataset.modelling :as ds-mod]
             [tech.v3.ml.loss :as loss]
             [tech.v3.ml.gridsearch :as ml-gs]
-            [clojure.tools.logging :as log])
+            [clojure.tools.logging :as log]
+            [pppmap.core :as ppp]
+            )
   (:import [java.util UUID]))
 
 
@@ -249,7 +251,7 @@ see tech.v3.dataset.modelling/set-inference-target")
              (log/warn "Did not find any gridsearch axis in options map"))
          ds-seq (ds-mod/k-fold-datasets dataset n-k-folds gridsearch-options)]
      (->> gs-seq
-          (pmap #(do-k-fold % loss-fn target-colname ds-seq))
+          (ppp/ppmap-with-progress "gridsearch" 1 #(do-k-fold % loss-fn target-colname ds-seq))
           (sort-by :avg-loss)
           (take n-result-models)
           )))
