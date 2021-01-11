@@ -58,10 +58,9 @@
   )
 
 (defn preprocess [dataset options]
-  (let [fun (requiring-resolve (get options :preprocess-fn 'tech.v3.ml/identity-preprocess))]
-    (fun dataset options)
-
-    ))
+  (let [fn-symbol  (or (options :preprocess-fn) 'tech.v3.ml/identity-preprocess)
+        fun (requiring-resolve fn-symbol)]
+    (fun dataset options)))
 
 (defn train
   "Given a dataset and an options map produce a model.  The model-type keyword in the
@@ -76,12 +75,14 @@
   * `:target-columns - vector of column names."
   [dataset options]
   (let [{:keys [train-fn]} (options->model-def options)
-        preprocess-result (preprocess (cf/feature dataset) options)
-        feature-ds (:dataset preprocess-result)
+
+        preprocess-result (preprocess dataset options)
+        preprocessed-dataset (:dataset preprocess-result)
+        feature-ds (cf/feature  preprocessed-dataset)
         options (merge options (:options preprocess-result))
         _ (errors/when-not-error (> (ds/row-count feature-ds) 0)
                                  "No features provided")
-        target-ds (cf/target dataset)
+        target-ds (cf/target preprocessed-dataset)
         _ (errors/when-not-error (> (ds/row-count target-ds) 0)
                                  "No target columns provided
 see tech.v3.dataset.modelling/set-inference-target")
@@ -180,9 +181,9 @@ see tech.v3.dataset.modelling/set-inference-target")
 
 
 (defn- do-k-fold
-  [options loss-fn target-colname ds-seq]
+  [options loss-fn target-colname ds-seq preprocess-fn]
   (let [models (mapv (fn [{:keys [train-ds test-ds]}]
-                       (let [model (train train-ds options)
+                       (let [model (train train-ds (assoc options :preprocess-fn preprocess-fn))
                              predictions (predict test-ds model)]
                          (assoc model :loss (loss-fn (predictions target-colname)
                                                      (test-ds target-colname)))))
@@ -212,8 +213,9 @@ see tech.v3.dataset.modelling/set-inference-target")
 
   ([dataset options n-k-folds loss-fn]
    (let [target-colname (first (ds/column-names (cf/target dataset)))]
-     (->> (ds-mod/k-fold-datasets dataset n-k-folds options)
-          (do-k-fold options loss-fn target-colname))))
+     (do-k-fold options loss-fn target-colname
+                (ds-mod/k-fold-datasets dataset n-k-folds options)
+                (:preprocess-fn options))))
   ([dataset options n-k-folds]
    (train-k-fold dataset options n-k-folds (default-loss-fn dataset)))
   ([dataset options]
@@ -249,7 +251,7 @@ see tech.v3.dataset.modelling/set-inference-target")
              (log/warn "Did not find any gridsearch axis in options map"))
          ds-seq (ds-mod/k-fold-datasets dataset n-k-folds gridsearch-options)]
      (->> gs-seq
-          (pmap #(do-k-fold % loss-fn target-colname ds-seq))
+          (pmap #(do-k-fold % loss-fn target-colname ds-seq (:preprocess-fn options)))
           (sort-by :avg-loss)
           (take n-result-models)
           )))
