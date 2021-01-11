@@ -19,10 +19,12 @@
    The column of name `(options :sparse-column)` of `feature-ds` needs to contain the text as SparseArrays
    over the vocabulary."
   (let [train-array (into-array SparseArray (get feature-ds (options :sparse-column)))
-        score (get target-ds (first (ds-mod/inference-target-column-names target-ds)))]
+        score (get target-ds (first (ds-mod/inference-target-column-names target-ds)))
+        p (count (-> feature-ds meta :count-vectorize-vocabulary :vocab->index-map))
+        ]
     (SVM/fit train-array
              (dt/->int-array score)
-             ^int (get options :p)
+             p
              ^double (get options :C 1.0)
              ^double (get options :tol 1e-4))))
 
@@ -41,3 +43,4 @@
   train
   predict
   {})
+

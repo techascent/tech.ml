@@ -49,21 +49,7 @@
     (apply dissoc freqs processed-stop-words)))
 
 
-(defn ->vocabulary-top-n [bows n]
-  "Takes top-n most frequent tokens"
-  (let [vocabulary
-        (->>
-         (apply merge-with + bows)
-         (sort-by second)
-         reverse
-         (take n)
-         keys)
-        vocab->index-map (zipmap vocabulary (range))]
 
-    {:vocab vocabulary
-     :vocab->index-map vocab->index-map
-     :index->vocab-map (clojure.set/map-invert vocab->index-map)
-     }))
 
 (defn count-vectorize
   ([ds text-col bow-col text->bow-fn options]
@@ -83,11 +69,32 @@
    )
   )
 
+(defn ->vocabulary-top-n [bows n]
+  "Takes top-n most frequent tokens as vocabulary"
+  (let [vocabulary
+        (->>
+         (apply merge-with + bows)
+         (sort-by second)
+         reverse
+         (take n)
+         keys)]
+    vocabulary))
 
-(defn bow->something-sparse [ds bow-col indices-col vocab-size bow->sparse-fn]
+(defn create-vocab-all [bow ]
+  "Uses all tokens as th vocabulary"
+  (keys
+   (apply merge bow))
+  )
+
+(defn bow->something-sparse [ds bow-col indices-col create-vocab-fn bow->sparse-fn]
   "Converts a bag-of-word column `bow-col` to a sparse data column `indices-col`.
    The exact transformation to the sparse representtaion is given by `bow->sparse-fn`"
-  (let [vocabulary (->vocabulary-top-n (get ds bow-col) vocab-size)
+  (let [vocabulary-list (create-vocab-fn (get ds bow-col))
+        vocab->index-map (zipmap vocabulary-list  (range))
+        vocabulary {:vocab vocabulary-list
+                    :vocab->index-map vocab->index-map
+                    :index->vocab-map (clojure.set/map-invert vocab->index-map)
+                    }
         vocab->index-map (:vocab->index-map vocabulary)
         ds
         (vary-meta ds assoc
@@ -101,3 +108,52 @@
        1000
        #(bow->sparse-fn % vocab->index-map)
        (get ds bow-col))))))
+
+
+
+
+(defn tf-map [bows]
+  (loop [m {} bows bows]
+    (let [bow (first bows)
+          token-present (zipmap (keys bow) (repeat 1))]
+
+      (if (empty? bows)
+        m
+        (recur
+         (merge-with + m token-present)
+         (rest bows))))))
+
+
+(defn idf [tf-map term bows]
+  (let [n-t (count bows)
+        n-d (get tf-map term)]
+    (Math/log10 (/ n-t n-d ))))
+
+
+(defn tf [term bow]
+  (/
+   (get bow term 0)
+   (apply + (vals bow))))
+
+
+(defn tfidf [tf-map term bow bows]
+  (* (tf term bow)  (idf tf-map term bows) ))
+
+
+(defn bow->tfidf [ds bow-column tfidf-column]
+  "Calculates the tfidf score from bag-of-words (as token frequency maps)
+   in column `bow-column` and stores them in a new column `tfid-column` as maps of token->tfidf-score."
+  (let [bows (get ds bow-column)
+        tf-map (tf-map bows)
+        tfidf-column (ds/new-column tfidf-column
+                                    (ppp/ppmap-with-progress
+                                     "tfidf" 1000
+                                     (fn [bow]
+                                       (let [terms (keys bow)
+                                             tfidfs
+                                             (map
+                                              #(tfidf tf-map % bow bows)
+                                              terms)]
+                                         (zipmap terms tfidfs)))
+                                     bows))]
+    (ds/add-column ds tfidf-column)))

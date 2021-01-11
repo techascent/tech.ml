@@ -11,7 +11,7 @@
     {:dataset
      (-> ds
          (nlp/count-vectorize :Text :bow nlp/default-text->bow options)
-         (nb/bow->SparseArray :bow :bow-sparse (:vocab-size options))
+         (nb/bow->SparseArray :bow :bow-sparse #(nlp/->vocabulary-top-n %  (:vocab-size options)))
          )
      :options (merge  options {:a 1})})
 

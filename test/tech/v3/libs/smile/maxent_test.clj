@@ -12,7 +12,7 @@
    (ds/->dataset "test/data/reviews.csv.gz" {:key-fn keyword })
    (ds/select-columns [:Text :Score])
    (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-   (maxent/bow->sparse-array :bow :bow-sparse 1000)
+   (maxent/bow->sparse-array :bow :bow-sparse  #(nlp/->vocabulary-top-n % 1000))
    (ds-mod/set-inference-target :Score)))
 
 (deftest test-maxent-multinomial []

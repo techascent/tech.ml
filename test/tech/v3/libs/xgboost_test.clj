@@ -11,7 +11,7 @@
             [tech.v3.ml :as ml]
             [tech.v3.ml.loss :as loss]
             [tech.v3.ml.verify :as verify]
-            ))
+            [tech.v3.libs.xgboost]))
 
 (deftest basic
   (verify/basic-regression {:model-type :xgboost/regression}))
@@ -62,7 +62,7 @@
            (ds/->dataset "test/data/reviews.csv.gz" {:key-fn keyword })
            (ds/select-columns [:Text :Score])
            (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-           (nb/bow->SparseArray :bow :bow-sparse 100)
+           (nb/bow->SparseArray :bow :bow-sparse  #(nlp/->vocabulary-top-n % 100))
            (ds/drop-columns [:Text :bow])
            (ds/update-column :Score
                              (fn [col]
