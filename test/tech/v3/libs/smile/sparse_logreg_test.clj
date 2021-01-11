@@ -13,14 +13,16 @@
    (ds/select-columns [:Text :Score])
    (ds/update-column :Score #(map dec %))
    (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-   (nb/bow->SparseArray :bow :bow-sparse 100)
+   (nb/bow->SparseArray :bow :sparse #(nlp/->vocabulary-top-n % 100))
    (ds-mod/set-inference-target :Score)))
+
+
 
 (deftest does-not-crash
   (let [reviews (get-reviews)
         trained-model
         (ml/train reviews {:model-type :smile.classification/sparse-logistic-regression
-                          :sparse-column :bow-sparse})]
+                           :sparse-column :sparse})]
 
     (is (= [4 4 4 2]
            (take 4

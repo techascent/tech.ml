@@ -16,14 +16,19 @@
                                             +1 -1))
                                 %))
      (nlp/count-vectorize :Text :bow nlp/default-text->bow)
-     (nb/bow->SparseArray :bow :bow-sparse 100)
+     (nb/bow->SparseArray :bow :bow-sparse #(nlp/->vocabulary-top-n % 100))
      (ds-mod/set-inference-target :Score)))
 
 (deftest does-not-crash
   (let [reviews (get-reviews)
+        _ (def reviews reviews)
         trained-model
         (ml/train reviews {:model-type :smile.classification/sparse-svm
                            :sparse-column :bow-sparse
-                           :p 100})]
+                           })]
+    (def trained-model trained-model)
     (is (= {-1 :6 1 :994})
         (frequencies (:Score (ml/predict reviews trained-model))))))
+
+(count
+ (-> reviews meta :count-vectorize-vocabulary :vocab->index-map))
