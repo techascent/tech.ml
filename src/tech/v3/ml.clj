@@ -267,7 +267,6 @@ see tech.v3.dataset.modelling/set-inference-target")
          ds-seq (ds-mod/k-fold-datasets dataset n-k-folds gridsearch-options)]
      (->> gs-seq
           (ppp/ppmap-with-progress "gridsearch" 1 #(safe-do-k-fold % loss-fn target-colname ds-seq (:preprocess-fn options)))
-          (remove nil?)
           (sort-by :avg-loss)
           (take n-result-models)
           )))
