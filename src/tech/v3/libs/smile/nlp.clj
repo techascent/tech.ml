@@ -14,28 +14,31 @@
     (iterator-seq (.iterator (EnglishStopWords/valueOf (str/upper-case (name stopwords-option)))))
     stopwords-option))
 
-(defn word-process [^PorterStemmer stemmer ^SimpleNormalizer normalizer ^String word]
-  (let [
+(defn word-process [stemmer ^SimpleNormalizer normalizer ^String word]
+  (let [word
+        (-> word
+            (str/lower-case)
+            (#(.normalize normalizer %)))
+        word (if (nil? stemmer)
+               word
+               (.stem stemmer word))]
+    word))
 
-        ]
-    (-> word
-        (str/lower-case)
-        (#(.normalize normalizer %))
-        (#(.stem stemmer %)))))
 
-(defn default-text->bow [text options]
-  "Converts text to token counts (a map token -> count).
-   Takes an option `stopwords` being either a keyword naming a
-   default Smile dictionary (:default :google :comprehensive :mysql)
-   or a seq of stop words."
+
+
+(defn default-tokenize [text options]
+  "Tokenizes text.
+  The usage of a stemmer can be configured by options :stemmer "
   (let [normalizer (SimpleNormalizer/getInstance)
-        stemmer (PorterStemmer.)
-        stopwords-option (:stopwords options)
-        stopwords  (resolve-stopwords stopwords-option)
-        processed-stop-words (map #(word-process stemmer normalizer %)  stopwords)
+        stemmer-type (get options :stemmer :porter)
         tokenizer (SimpleTokenizer. )
+        stemmer (case stemmer-type
+                  :none nil
+                  :porter (PorterStemmer.)
+                  )
         sentence-splitter (SimpleSentenceSplitter/getInstance)
-        freqs
+        tokens
         (->> text
              (.normalize normalizer)
              (.split sentence-splitter)
@@ -44,8 +47,24 @@
              flatten
              (remove nil?)
              (map #(word-process stemmer normalizer % ))
-             frequencies
              )]
+    tokens))
+
+(defn default-text->bow [text options]
+  "Converts text to token counts (a map token -> count).
+   Takes options:
+   `stopwords` being either a keyword naming a
+   default Smile dictionary (:default :google :comprehensive :mysql)
+   or a seq of stop words.
+   `stemmer` being either :none or :porter for selecting the porter stemmer.
+"
+  (let [normalizer (SimpleNormalizer/getInstance)
+        stemmer (PorterStemmer.)
+        stopwords-option (:stopwords options)
+        stopwords  (resolve-stopwords stopwords-option)
+        processed-stop-words (map #(word-process stemmer normalizer %)  stopwords)
+        tokens (default-tokenize text options)
+        freqs (frequencies tokens)]
     (apply dissoc freqs processed-stop-words)))
 
 
