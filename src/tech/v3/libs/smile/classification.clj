@@ -89,12 +89,13 @@
               {:name :tolerance
                :type :float64
                :default 1e-5}
-              {:name :max-iter
+              {:name :max-iterations
                :type :int32
                :default 500}]
     :gridsearch-options {:lambda (ml-gs/linear 1e-3 1e2 30)
                          :tolerance (ml-gs/linear 1e-9 1e-1 20)
-                         :max-iter (ml-gs/linear 1e2 1e4 20 :int64)}
+                         :max-iterations (ml-gs/linear 1e2 1e4 20 :int64)}
+    :property-name-stem "smile.logit"
     :constructor #(LogisticRegression/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
     :predictor double-array-predict-posterior}
 
