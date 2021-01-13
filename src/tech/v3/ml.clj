@@ -201,6 +201,19 @@ see tech.v3.dataset.modelling/set-inference-target")
            :avg-loss avg-loss
            :n-k-folds (count ds-seq))))
 
+(defn- pprint-to-string [o]
+  (let [out (java.io.StringWriter.)]
+    (clojure.pprint/pprint o out)
+    (.toString out)))
+
+(defn- safe-do-k-fold
+  [options loss-fn target-colname ds-seq preprocess-fn]
+  (try
+    (do-k-fold options loss-fn target-colname ds-seq preprocess-fn)
+    (catch Exception e
+      (log/error e "Exception caught during grid search ")
+      (log/error "Options: \n" (pprint-to-string options)))))
+
 
 (defn train-k-fold
   "Train a model across k-fold datasets using tech.v3.dataset.modelling/k-fold-dataset
@@ -253,7 +266,8 @@ see tech.v3.dataset.modelling/set-inference-target")
              (log/warn "Did not find any gridsearch axis in options map"))
          ds-seq (ds-mod/k-fold-datasets dataset n-k-folds gridsearch-options)]
      (->> gs-seq
-          (ppp/ppmap-with-progress "gridsearch" 1 #(do-k-fold % loss-fn target-colname ds-seq (:preprocess-fn options)))
+          (ppp/ppmap-with-progress "gridsearch" 1 #(safe-do-k-fold % loss-fn target-colname ds-seq (:preprocess-fn options)))
+          (remove nil?)
           (sort-by :avg-loss)
           (take n-result-models)
           )))
