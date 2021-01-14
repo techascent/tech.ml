@@ -26,8 +26,8 @@
     (SparseLogisticRegression/fit train-dataset
                                   (dt/->int-array score)
                                   (get options :lambda 0.1)
-                                  (get options :tol 1e-5)
-                                  (get options :max-iter 500)
+                                  (get options :tolerance 1e-5)
+                                  (get options :max-iterations 500)
                                   )))
 (defn predict [feature-ds
                thawed-model
