@@ -22,6 +22,7 @@
   (let [reviews (get-reviews)
         trained-model
         (ml/train reviews {:model-type :smile.classification/sparse-logistic-regression
+                           :n-sparse-columns 100
                            :sparse-column :sparse})]
 
     (is (= [4 4 4 2]
