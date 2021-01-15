@@ -21,7 +21,7 @@
    over the vocabulary."
   (let [train-array (into-array SparseArray
                                 (get feature-ds (:sparse-column options)))
-        train-dataset (SparseDataset/of (seq train-array))
+        train-dataset (SparseDataset/of (seq train-array) (options :n-sparse-columns))
         score (get target-ds (first (ds-mod/inference-target-column-names target-ds)))]
     (SparseLogisticRegression/fit train-dataset
                                   (dt/->int-array score)
