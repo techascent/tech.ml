@@ -95,7 +95,7 @@
     :gridsearch-options {:lambda (ml-gs/linear 1e-3 1e2 30)
                          :tolerance (ml-gs/linear 1e-9 1e-1 20)
                          :max-iterations (ml-gs/linear 1e2 1e4 20 :int64)}
-    :property-name-stem "smile.logit"
+    :property-name-stem "smile.logistic"
     :constructor #(LogisticRegression/fit ^Formula %1 ^DataFrame %2 ^Properties %3)
     :predictor double-array-predict-posterior}
 
