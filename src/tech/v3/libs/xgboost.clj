@@ -108,21 +108,22 @@
 
 
 
-(defn- sparse->labeled-point [sparse target]
+(defn- sparse->labeled-point [sparse target n-sparse-columns]
   (let [x-i-s
         (map
          #(hash-map :i  (.i %) :x (.x %))
          (iterator-seq
           (.iterator sparse)))]
     (LabeledPoint. target
+                   n-sparse-columns
                    (into-array Integer/TYPE (map :i x-i-s))
                    (into-array Float/TYPE (map :x x-i-s)))))
 
-(defn- sparse-feature->dmatrix [feature-ds target-ds sparse-column]
+(defn- sparse-feature->dmatrix [feature-ds target-ds sparse-column n-sparse-columns]
   (DMatrix.
    (.iterator
     (map
-     (fn [features target ] (sparse->labeled-point features target))
+     (fn [features target ] (sparse->labeled-point features target n-sparse-columns))
      (get feature-ds sparse-column)
      (or  (get target-ds (first (ds-mod/inference-target-column-names target-ds)))
           (repeat 0.0)
@@ -143,10 +144,9 @@
      "Multi-column regression/classification is not supported.  Target ds has %d columns"
      (ds/column-count target-ds))
     (map (fn [features target]
-           (LabeledPoint. (float target) nil (dtype/->float-array features)))
+           (LabeledPoint. (float target) (first (dtype/shape features))  nil (dtype/->float-array features)))
          feature-tens (or (when target-tens (dtype/->reader target-tens))
                           (repeat (float 0.0))))))
-
 
 (defn- dataset->dmatrix
   "Dataset is a sequence of maps.  Each contains a feature key.
@@ -182,9 +182,9 @@
    :round (ml-gs/linear 5 46 5 :int64)
    :alpha (ml-gs/linear 0.01 0.31 30)})
 
-(defn ->dmatrix [feature-ds target-ds sparse-column]
+(defn ->dmatrix [feature-ds target-ds sparse-column n-sparse-columns]
   (if sparse-column
-    (sparse-feature->dmatrix feature-ds target-ds sparse-column)
+    (sparse-feature->dmatrix feature-ds target-ds sparse-column n-sparse-columns)
     (dataset->dmatrix feature-ds target-ds)))
 
 (defn- train
@@ -194,7 +194,7 @@
   (locking #'multiclass-objective?
     (let [objective (options->objective options)
           sparse-column-or-nil (:sparse-column options)
-          train-dmat (->dmatrix feature-ds label-ds sparse-column-or-nil)
+          train-dmat (->dmatrix feature-ds label-ds sparse-column-or-nil (:n-sparse-columns options))
           base-watches (or (:watches options) {})
           feature-cnames (ds/column-names feature-ds)
           target-cnames (ds/column-names label-ds)
@@ -204,7 +204,8 @@
                                        (->dmatrix
                                         (ds/select-columns v feature-cnames)
                                         (ds/select-columns v target-cnames)
-                                        sparse-column-or-nil))
+                                        sparse-column-or-nil
+                                        (:n-sparse-columns options)))
                                  watches)
                                ;;Linked hash map to preserve order
                                (LinkedHashMap.)))
@@ -282,9 +283,9 @@ c/xgboost4j/java/XGBoost.java#L208"))
 (defn- predict
   [feature-ds thawed-model {:keys [target-columns target-categorical-maps options]}]
   (let [sparse-column-or-nil (:sparse-column options)
-        dmatrix (->dmatrix feature-ds nil sparse-column-or-nil)
-        predict-ds (->> dmatrix
-                        (.predict ^Booster thawed-model)
+        dmatrix (->dmatrix feature-ds nil sparse-column-or-nil (:n-sparse-columns options))
+        prediction (.predict ^Booster thawed-model dmatrix)
+        predict-ds (->> prediction
                         (dtt/->tensor))
         target-cname (first target-columns)]
     (if (multiclass-objective? (options->objective options))
@@ -344,7 +345,11 @@ c/xgboost4j/java/XGBoost.java#L208"))
   (def split-data (ds-mod/train-test-split ds))
   (def train-ds (:train-ds split-data))
   (def test-ds (:test-ds split-data))
-  (def model (ml/train train-ds {:model-type :xgboost/classification}))
+  (def model (ml/train train-ds {:validate-parameters 1
+                                 :round 10
+                                 :silent 0
+                                 :verbosity 3
+                                 :model-type :xgboost/classification}))
   (def predictions (ml/predict test-ds model))
   (ml/explain model)
   (require '[tech.v3.ml.loss :as loss])
