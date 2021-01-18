@@ -9,8 +9,10 @@
             [tech.v3.libs.smile.nlp :as nlp]
             [tech.v3.libs.xgboost]
             [tech.v3.ml :as ml]
+            [tech.v3.ml.metrics :as metrics]
             [tech.v3.ml.loss :as loss]
             [tech.v3.ml.verify :as verify]
+            [tech.v3.ml.classification :as ml-class]
             [tech.v3.libs.xgboost]))
 
 (deftest basic
@@ -77,19 +79,53 @@
            (ds-mod/set-inference-target :Score))
           folds
           (ml/train-k-fold reviews {:model-type :xgboost/classification
-                                    :sparse-column :bow-sparse})
+                                    :sparse-column :bow-sparse
+                                    :n-sparse-columns 100
+                                    })
           explanation (ml/explain folds)
           ]))
 
 (comment
+  (def reviews
 
+    (->
+     (ds/->dataset "test/data/reviews.csv.gz" {:key-fn keyword })
+     (ds/select-columns [:Text :Score])
+     (nlp/count-vectorize :Text :bow nlp/default-text->bow)
+     (nb/bow->SparseArray :bow :bow-sparse  #(nlp/->vocabulary-top-n % 100))
+     (ds/drop-columns [:Text :bow])
+     (ds/update-column :Score
+                       (fn [col]
+                         (let [val-map {0 :c0
+                                        1 :c1
+                                        2 :c2
+                                        3 :c3
+                                        4 :c4
+                                        5 :c5}]
+                           (dtype/emap val-map :keyword col))))
+     (ds/categorical->number cf/categorical)
+     (ds-mod/set-inference-target :Score))
+    )
   (def trained-model
     (ml/train reviews {:model-type :xgboost/classification
-                       :sparse-column :bow-sparse}))
+                       :sparse-column :bow-sparse
+                       :n-sparse-columns 100
+                       :silent 0
+                       :round 1
+                       :eval-metric "merror"
+                       :watches {:test-ds (ds/sample  reviews 10)}
+                       }))
 
-  (ml/predict reviews trained-model )
+
+  (def prediction
+    (:Score
+     (ml/predict reviews trained-model )))
+
+  (metrics/accuracy (:Score reviews) prediction )
 
   (def folds
     (ml/train-k-fold reviews {:model-type :xgboost/classification
-                              :sparse-column :bow-sparse}))
+                              :sparse-column :bow-sparse
+
+                              }))
   (ml/explain folds))
