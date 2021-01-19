@@ -32,6 +32,10 @@
         p (count (-> feature-ds meta :count-vectorize-vocabulary :vocab->index-map))
         nb-model
         (case (options :discrete-naive-bayes-model)
+          :polyaurn DiscreteNaiveBayes$Model/POLYAURN
+          :wcnb DiscreteNaiveBayes$Model/WCNB
+          :cnb DiscreteNaiveBayes$Model/CNB
+          :twcnb DiscreteNaiveBayes$Model/TWCNB
           :bernoulli  DiscreteNaiveBayes$Model/BERNOULLI
           :multinomial DiscreteNaiveBayes$Model/MULTINOMIAL)
         nb (DiscreteNaiveBayes. nb-model (:k options) p)]
