@@ -43,28 +43,33 @@
 
 
 (defn confusion-map->ds
-  [conf-matrix-map]
-  (let [all-labels (->> (keys conf-matrix-map)
-                        sort)
-        header-column (merge {:column-name "column-name"}
-                             (->> all-labels
-                                  (map #(vector % %))
-                                  (into {})))
-        column-names (concat [:column-name]
-                             all-labels)]
-    (->> all-labels
-         (map (fn [label-name]
-                (let [entry (get conf-matrix-map label-name)]
-                  (merge {:column-name label-name}
-                         (->> all-labels
-                              (map (fn [entry-name]
-                                     [entry-name (dtype-pp/format-object
-                                                  (get entry entry-name 0.0))]))
-                              (into {}))))))
-         (concat [header-column])
-         (ds/->>dataset)
-         ;;Ensure order is consistent
-         (#(ds/select-columns % column-names)))))
+  ([conf-matrix-map normalize]
+   (let [all-labels (->> (keys conf-matrix-map)
+                         sort)
+         header-column (merge {:column-name "column-name"}
+                              (->> all-labels
+                                   (map #(vector % %))
+                                   (into {})))
+         column-names (concat [:column-name]
+                              all-labels)]
+     (->> all-labels
+          (map (fn [label-name]
+                 (let [entry (get conf-matrix-map label-name)]
+                   (merge {:column-name label-name}
+                          (->> all-labels
+                               (map (fn [entry-name]
+                                      [entry-name (dtype-pp/format-object
+                                                   (get entry entry-name
+                                                        (case normalize
+                                                          :none 0
+                                                          :all 0.0)))]))
+                               (into {}))))))
+          (concat [header-column])
+          (ds/->>dataset)
+          ;;Ensure order is consistent
+          (#(ds/select-columns % column-names)))))
+  ([conf-matrix-map]
+   (confusion-map :none)))
 
 
 #_(defn confusion-ds
