@@ -18,20 +18,28 @@
       1))
 
 (defn confusion-map
-  [predicted-labels labels]
-  (let [answer-counts (frequencies labels)]
-    (->> (map vector predicted-labels labels)
-         (reduce (fn [total-map [pred actual]]
-                   (update-in total-map [actual pred]
-                              safe-inc))
-                 {})
-         (map (fn [[k v]]
-                [k (->> v
-                        (map (fn [[guess v]]
-                               [guess
-                                (double (/ v (get answer-counts k)))]))
-                        (into (sorted-map)))]))
-         (into (sorted-map)))))
+  ([predicted-labels labels normalize]
+   (let [answer-counts (frequencies labels)]
+     (->> (map vector predicted-labels labels)
+          (reduce (fn [total-map [pred actual]]
+                    (update-in total-map [actual pred]
+                               safe-inc))
+                  {})
+          (map (fn [[k v]]
+                 [k (->> v
+                         (map (fn [[guess v]]
+                                [guess
+                                 (case normalize
+                                   :all  (double (/ v (get answer-counts k)))
+                                   :none v
+                                   )
+
+                                 ]))
+                         (into (sorted-map)))]))
+          (into (sorted-map)))))
+  ([predicted-labels labels]
+   (confusion-map predicted-labels labels :all))
+  )
 
 
 (defn confusion-map->ds
@@ -66,3 +74,6 @@
       (-> (probability-distributions->labels predictions)
           (confusion-map (ds/labels test-ds))
           (confusion-map->ds))))
+(comment
+  (confusion-map [:a :b :c :a] [:a :c :c :a] :all)
+  )
