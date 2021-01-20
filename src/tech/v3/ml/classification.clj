@@ -69,7 +69,7 @@
           ;;Ensure order is consistent
           (#(ds/select-columns % column-names)))))
   ([conf-matrix-map]
-   (confusion-map :none)))
+   (confusion-map->ds conf-matrix-map :none)))
 
 
 #_(defn confusion-ds
