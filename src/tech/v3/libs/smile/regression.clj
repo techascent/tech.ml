@@ -10,6 +10,7 @@
             [tech.v3.libs.smile.data :as smile-data]
             [tech.v3.libs.smile.protocols :as smile-proto])
   (:import [smile.regression
+            OLS
             Regression
             DataFrameRegression
             GradientTreeBoost
@@ -52,6 +53,13 @@
    ;; efficency for normally distributed errors.
    :huber "Huber"})
 
+(def ^:private ols-method-table
+  {
+   :qr "qr"
+   :svd "svd"
+   })
+
+
 
 (defn- predict-linear-model
   [^LinearModel thawed-model ds]
@@ -64,6 +72,7 @@
          (dtype/make-container :java-array :float64))))
 
 
+
 (defn- predict-df
   [^DataFrameRegression thawed-model ds]
   (let [df (smile-data/dataset->smile-dataframe ds)]
@@ -71,8 +80,32 @@
     (.predict thawed-model df)))
 
 
+(defn predict-ols [thawed-model ds]
+  (let [ds-with-bias
+        (ds/append-columns
+         (ds/new-dataset
+          [(ds/new-column :intercept (repeat (ds/row-count ds) 1))])
+         (.columns ds))]
+    (predict-linear-model thawed-model ds-with-bias)))
+
 (def ^:private regression-metadata
-  {:elastic-net {:options [{:name :lambda1
+  {:ordinary-least-square {:options [{:name :method
+                                      :type :enumeration
+                                      :lookup-table ols-method-table
+                                      :default :qr
+                                      }
+                                     {:name :standard-error
+                                      :type boolean
+                                      :default true
+                                      }
+                                     {:name :recursive
+                                      :type boolean
+                                      :default true}]
+                           :property-name-stem "smile.ols"
+                           :constructor #(OLS/fit %1 %2 %3)
+                           :predictor predict-ols}
+
+   :elastic-net {:options [{:name :lambda1
                             :type :float64
                             :default 0.1
                             :range :>0}
@@ -193,8 +226,7 @@
               ]
     :property-name-stem "smile.random.forest"
     :constructor #(RandomForest/fit %1 %2 %3)
-    :predictor predict-df}
-   })
+    :predictor predict-df}})
 
 
 (defmulti ^:private model-type->regression-model
@@ -245,6 +277,7 @@
                         (model/options->model-type options))
         predictor (:predictor entry-metadata)
         target-cname (first target-columns)]
+
     (-> (predictor thawed-model feature-ds)
         (dtype/clone)
         (dtt/->tensor)
@@ -284,7 +317,8 @@
     (def split-data (ds-mod/train-test-split ds))
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
-    (def model (ml/train train-ds {:model-type :smile.regression/elastic-net}))
+    (def model (ml/train train-ds {:model-type :smile.regression/ordinary-least-square}))
     (def prediction (ml/predict test-ds model))
     )
   )
+
