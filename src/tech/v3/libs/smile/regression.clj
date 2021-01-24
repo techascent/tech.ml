@@ -85,7 +85,7 @@
         (ds/append-columns
          (ds/new-dataset
           [(ds/new-column :intercept (repeat (ds/row-count ds) 1))])
-         (.columns ds))]
+         (ds/columns ds))]
     (predict-linear-model thawed-model ds-with-bias)))
 
 (def ^:private regression-metadata
