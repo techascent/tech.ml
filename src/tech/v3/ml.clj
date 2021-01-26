@@ -105,12 +105,17 @@ see tech.v3.dataset.modelling/set-inference-target")
   operation is needed in order to use the model.  This happens for you during preduct
   but you may also cached the 'thawed' model on the model map under the
   ':thawed-model'  keyword in order to do fast predictions on small datasets."
-  [model {:keys [thaw-fn]}]
-  (if-let [cached-model (get model :thawed-model)]
-    cached-model
-    (if thaw-fn
-      (thaw-fn (get model :model-data))
-      (get model :model-data))))
+  ([model {:keys [thaw-fn]}]
+   (if-let [cached-model (get model :thawed-model)]
+     cached-model
+     (if thaw-fn
+       (thaw-fn (get model :model-data))
+       (get model :model-data))))
+  ([model]
+   (let [thaw-fn
+         (:thaw-fn
+          (options->model-def (:options model)))]
+     (thaw-fn (:model-data model)))))
 
 
 (defn predict
