@@ -80,13 +80,24 @@
     (.predict thawed-model df)))
 
 
-(defn predict-ols [thawed-model ds]
+(defn- predict-ols [thawed-model ds]
   (let [ds-with-bias
         (ds/append-columns
          (ds/new-dataset
           [(ds/new-column :intercept (repeat (ds/row-count ds) 1))])
          (ds/columns ds))]
     (predict-linear-model thawed-model ds-with-bias)))
+
+(defn- explain-ols
+  [thawed-model {:keys [feature-columns]} _options]
+  (let [^LinearModel model thawed-model
+        weights (seq (.coefficients model))]
+    {:bias (first weights)
+     :coefficients (->> (map vector
+                             feature-columns
+                             (rest weights))
+                        (sort-by (comp second) >))}))
+
 
 (def ^:private regression-metadata
   {:ordinary-least-square {:options [{:name :method
@@ -300,7 +311,9 @@
 (doseq [[reg-kwd reg-def] regression-metadata]
   (ml/define-model! (keyword "smile.regression" (name reg-kwd))
     train predict {:thaw-fn thaw
-                   :explain-fn explain
+                   :explain-fn (case reg-kwd
+                                 :ordinary-least-square explain-ols
+                                 explain)
                    :hyperparameters (:gridsearch-options reg-def)}))
 
 
