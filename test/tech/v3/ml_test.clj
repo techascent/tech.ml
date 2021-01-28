@@ -3,9 +3,13 @@
             [tech.v3.dataset.modelling :as ds-mod]
             [tech.v3.libs.smile.discrete-nb :as nb]
             [tech.v3.libs.smile.nlp :as nlp]
+            [tech.v3.libs.smile.classification]
             [tech.v3.ml :as ml]
             [tech.v3.ml.gridsearch :as ml-gs]
-            [clojure.test :refer (deftest is)]))
+            [tech.v3.dataset.column-filters :as cf]
+            [clojure.test :refer (deftest is)])
+  (:import [smile.classification KNN])
+  )
 
 (defn preprocess [ds options]
     {:dataset
@@ -52,3 +56,15 @@
                            :vocab-size 1000
                            })]
     (is (=  1 (get-in model [:options :a])))))
+
+
+
+(deftest can-thaw-with--without-fn
+  (let [src-ds (ds/->dataset "test/data/iris.csv")
+        ds (->  src-ds
+                (ds/categorical->number cf/categorical)
+                (ds-mod/set-inference-target "species"))
+        model (ml/train ds {:model-type :smile.classification/knn})
+        model-def (ml/options->model-def (:options model))]
+    (= KNN (class (ml/thaw-model model)))
+    (= KNN (class (ml/thaw-model model model-def)))))
