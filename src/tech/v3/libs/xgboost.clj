@@ -17,6 +17,7 @@
             [clojure.tools.logging :as log])
   (:import [ml.dmlc.xgboost4j.java Booster XGBoost XGBoostError DMatrix]
            [ml.dmlc.xgboost4j LabeledPoint]
+           [smile.util SparseArray SparseArray$Entry]
            [java.util Iterator UUID LinkedHashMap Map]
            [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
@@ -108,10 +109,10 @@
 
 
 
-(defn- sparse->labeled-point [sparse target n-sparse-columns]
+(defn- sparse->labeled-point [^SparseArray sparse target n-sparse-columns]
   (let [x-i-s
         (map
-         #(hash-map :i  (.i %) :x (.x %))
+         #(hash-map :i  (.i ^SparseArray$Entry %) :x (.x ^SparseArray$Entry %))
          (iterator-seq
           (.iterator sparse)))]
     (LabeledPoint. target
@@ -122,13 +123,12 @@
 (defn- sparse-feature->dmatrix [feature-ds target-ds sparse-column n-sparse-columns]
   (DMatrix.
    (.iterator
-    (map
-     (fn [features target ] (sparse->labeled-point features target n-sparse-columns))
-     (get feature-ds sparse-column)
-     (or  (get target-ds (first (ds-mod/inference-target-column-names target-ds)))
-          (repeat 0.0)
-          ))) nil))
-
+    ^Iterable (map
+               (fn [features target ] (sparse->labeled-point features target n-sparse-columns))
+               (get feature-ds sparse-column)
+               (or  (get target-ds (first (ds-mod/inference-target-column-names target-ds)))
+                    (repeat 0.0)
+                    ))) nil))
 
 
 (defn- dataset->labeled-point-iterator
@@ -303,7 +303,7 @@ c/xgboost4j/java/XGBoost.java#L208"))
   (let [^Booster booster thawed-model
         sparse-column-or-nil (:sparse-column options)]
     (if sparse-column-or-nil
-      (let [score-map (.getScore booster "" importance-type)]
+      (let [score-map (.getScore booster "" (str importance-type))]
         (ds/->dataset {:feature (keys score-map)
                        (keyword importance-type) (vals score-map) }))
       (let [feature-col-map (->> feature-columns
