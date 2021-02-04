@@ -1,7 +1,9 @@
 (ns tech.v3.ml.stadapip
-  (:require [tech.v3.ml :as ml])
-  )
+  (:require [tech.v3.ml :as ml]
 
+          [tech.v3.dataset.modelling :as ds-mod]
+            )
+  )
 
 
 (defn model [pipeline-ctx options]
@@ -25,6 +27,7 @@
           ))
 
   )
+
 (comment
   (do
     (require '[tech.v3.dataset.column-filters :as cf])
