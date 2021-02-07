@@ -6,18 +6,19 @@
   )
 
 
-(defn model [pipeline-ctx options]
-  (let [uuid (:uuid pipeline-ctx)]
-    (case (:mode pipeline-ctx)
-      :fit (assoc pipeline-ctx
-                  uuid
-                  (ml/train (:dataset pipeline-ctx)  options))
-      :transform (assoc pipeline-ctx
-                        :dataset
-                        (ml/predict
-                         (:dataset pipeline-ctx)
-                         (:uuid pipeline-ctx)
-                         )))))
+(defn model [ options]
+  (fn [pipeline-ctx]
+    (def pipeline-ctx pipeline-ctx)
+    (let [uuid (:uuid pipeline-ctx)]
+      (case (:mode pipeline-ctx)
+        :fit (assoc pipeline-ctx
+                    uuid
+                    (ml/train (:dataset pipeline-ctx)  options))
+        :transform (assoc pipeline-ctx
+                          :dataset
+                          (ml/predict
+                           (:dataset pipeline-ctx)
+                           (get pipeline-ctx (:uuid pipeline-ctx))))))) )
 
 (defn explain [pipeline-ctx]
   (assoc pipeline-ctx
