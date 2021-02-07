@@ -8,7 +8,6 @@
 
 (defn model [ options]
   (fn [pipeline-ctx]
-    (def pipeline-ctx pipeline-ctx)
     (let [uuid (:uuid pipeline-ctx)]
       (case (:mode pipeline-ctx)
         :fit (assoc pipeline-ctx
