@@ -1,4 +1,4 @@
-(ns tech.v3.ml.stadapip
+(ns tech.v3.ml.pipeline
   (:require [tech.v3.ml :as ml]
 
           [tech.v3.dataset.modelling :as ds-mod]
@@ -7,17 +7,17 @@
 
 
 (defn model [pipeline-ctx options]
-
-  (case (:mode pipeline-ctx)
-    :fit (assoc pipeline-ctx
-                :tech.v3.ml/model
-                (ml/train(:dataset pipeline-ctx)  options))
-    :transform (assoc pipeline-ctx
-                      :dataset
-                      (ml/predict
-                       (:dataset pipeline-ctx)
-                       (:tech.v3.ml/model pipeline-ctx)
-                       ))))
+  (let [uuid (:uuid pipeline-ctx)]
+    (case (:mode pipeline-ctx)
+      :fit (assoc pipeline-ctx
+                  uuid
+                  (ml/train (:dataset pipeline-ctx)  options))
+      :transform (assoc pipeline-ctx
+                        :dataset
+                        (ml/predict
+                         (:dataset pipeline-ctx)
+                         (:uuid pipeline-ctx)
+                         )))))
 
 (defn explain [pipeline-ctx]
   (assoc pipeline-ctx
@@ -57,7 +57,8 @@
 
       )
     (def fitted
-      (pipeline {:mode :fit
+      (pipeline
+       {:mode :fit
                  :dataset train-ds}))
 
     
@@ -66,7 +67,4 @@
                        {:mode :transform
                         :dataset test-ds}))
 
-      )
-
-
-    ))
+      )))
