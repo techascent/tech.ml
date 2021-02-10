@@ -8,5 +8,5 @@
           ds (:metamorph/data ctx)
           mode (:metamorph/mode ctx)]
       (case mode
-        :metamorph/fit (assoc ctx id (ml/train ds  options))
-        :metamorph/transform  (assoc ctx :metamorph/data (ml/predict ds (get ctx id)))))))
+        :fit (assoc ctx id (ml/train ds  options))
+        :transform  (assoc ctx :metamorph/data (ml/predict ds (get ctx id)))))))

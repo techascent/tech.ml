@@ -18,11 +18,7 @@
         feature-ds (cf/feature ds)
         split-data (ds-mod/train-test-split ds {:randomize-dataset? false})
         train-ds (:train-ds split-data)
-        test-ds  (->
-                  (:test-ds split-data)
-                  ;; (ds/add-or-update-column "species" 0)
-                  )
-
+        test-ds  (:test-ds split-data)
 
         pipeline (fn  [ctx]
                    ((sut/model {:model-type :smile.classification/random-forest})
@@ -32,19 +28,18 @@
         fitted
         (pipeline
          {:metamorph/id "1"
-          :metamorph/mode :metamorph/fit
+          :metamorph/mode :fit
           :metamorph/data train-ds})
 
 
         prediction
         (pipeline (merge fitted
-                         {:metamorph/mode :metamorph/transform
+                         {:metamorph/mode :transform
                           :metamorph/data test-ds}))
 
         predicted-specis (ds-mod/column-values->categorical (:metamorph/data prediction)
                                                             "species"
-                                                            )
-        ]
+                                                            )]
 
     (is (= ["setosa" "setosa" "virginica"]
            (take 3 predicted-specis)))
