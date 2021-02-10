@@ -1,32 +1,21 @@
-(ns tech.v3.ml.pipeline
-  (:require [tech.v3.ml :as ml]
-
-          [tech.v3.dataset.modelling :as ds-mod]
-            )
-  )
+(ns tech.v3.ml.metamorph
+  (:require [tech.v3.ml :as ml]))
 
 
 (defn model [ options]
   (fn [pipeline-ctx]
-    (let [uuid (:uuid pipeline-ctx)]
-      (case (:mode pipeline-ctx)
-        :fit (assoc pipeline-ctx
-                    uuid
-                    (ml/train (:dataset pipeline-ctx)  options))
-        :transform (assoc pipeline-ctx
-                          :dataset
+    (let [id (:metamorph/id pipeline-ctx)]
+      (case (:metamorph/mode pipeline-ctx)
+        :metamorph/fit (assoc pipeline-ctx
+                    id
+                    (ml/train (:metamorph/data pipeline-ctx)  options))
+        :metamorph/transform (assoc pipeline-ctx
+                          :metamorph/data
                           (ml/predict
-                           (:dataset pipeline-ctx)
-                           (get pipeline-ctx (:uuid pipeline-ctx))))))) )
+                           (:metamorph/data pipeline-ctx)
+                           (get pipeline-ctx (:metamorph/id pipeline-ctx))))))) )
 
-(defn explain [pipeline-ctx]
-  (assoc pipeline-ctx
-         :tech.v3.ml/mode-explanation
-         (ml/explain
-          (:tech.v3.ml/model pipeline-ctx)
-          ))
 
-  )
 
 (comment
   (do
@@ -53,18 +42,20 @@
 
 
     (defn pipeline [ctx]
-      (model ctx {:model-type :smile.classification/random-forest})
+      ((model {:model-type :smile.classification/random-forest})
+       ctx)
 
       )
     (def fitted
       (pipeline
-       {:mode :fit
-                 :dataset train-ds}))
+       {:metamorph/id "1"
+        :metamorph/mode :metamorph/fit
+        :metamorph/data train-ds}))
 
     
     (def prediction
       (pipeline (merge fitted
-                       {:mode :transform
-                        :dataset test-ds}))
+                       {:metamorph/mode :metamorph/transform
+                        :metamorph/data test-ds}))
 
       )))
