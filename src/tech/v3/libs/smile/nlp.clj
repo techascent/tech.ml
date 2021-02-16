@@ -107,7 +107,10 @@
    (apply merge bow))
   )
 
-(defn bow->something-sparse [ds bow-col indices-col create-vocab-fn bow->sparse-fn]
+
+
+
+(defn bow->sparse-and-vocab [ds bow-col indices-col create-vocab-fn bow->sparse-fn]
   "Converts a bag-of-word column `bow-col` to a sparse data column `indices-col`.
    The exact transformation to the sparse representtaion is given by `bow->sparse-fn`"
   (let [vocabulary-list (create-vocab-fn (get ds bow-col))
@@ -117,19 +120,32 @@
                     :index->vocab-map (clojure.set/map-invert vocab->index-map)
                     }
         vocab->index-map (:vocab->index-map vocabulary)
-        ;; ds
-        ;; (vary-meta ds assoc
-        ;;            :count-vectorize-vocabulary vocabulary)
-        ]
-    (ds/add-or-update-column
-     ds
-     (ds/new-column
-      indices-col
-      (ppp/ppmap-with-progress
-       "bow->sparse"
-       1000
-       #(bow->sparse-fn % vocab->index-map)
-       (get ds bow-col))))))
+        ds
+        (ds/add-or-update-column
+         ds
+         (ds/new-column
+          indices-col
+          (ppp/ppmap-with-progress
+           "bow->sparse"
+           1000
+           #(bow->sparse-fn % vocab->index-map)
+           (get ds bow-col))))]
+    {:ds ds
+     :vocab vocabulary}
+    ))
+
+(defn bow->something-sparse [ds bow-col indices-col create-vocab-fn bow->sparse-fn]
+  "Converts a bag-of-word column `bow-col` to a sparse data column `indices-col`.
+   The exact transformation to the sparse representtaion is given by `bow->sparse-fn`"
+  (let [{:keys [ds vocabulary]}
+        (bow->sparse-and-vocab ds bow-col indices-col create-vocab-fn bow->sparse-fn)]
+
+
+    (vary-meta ds assoc
+               :count-vectorize-vocabulary vocabulary)
+    )
+
+  )
 
 
 

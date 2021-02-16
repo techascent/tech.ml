@@ -37,11 +37,11 @@
                          {:metamorph/mode :transform
                           :metamorph/data test-ds}))
 
-        predicted-specis (ds-mod/column-values->categorical (:metamorph/data prediction)
+        predicted-species (ds-mod/column-values->categorical (:metamorph/data prediction)
                                                             "species"
                                                             )]
 
     (is (= ["setosa" "setosa" "virginica"]
-           (take 3 predicted-specis)))
+           (take 3 predicted-species)))
 
     ))
