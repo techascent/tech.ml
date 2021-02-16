@@ -26,3 +26,12 @@
     (is (= 0.12901285528456338 (get tfidf-2 "exampl")))
     (is (= 0.12041199826559248 (get tfidf-1 "a")))
     (is (= 0.0 (get tfidf-1 "thi")))))
+
+
+(deftest freqs->SparseArray []
+  (is (=
+       (map
+        #(vector (.i %) (.x %))
+        (iterator-seq
+         (.iterator (nlp/freqs->SparseArray {"a" 10.0  "b" 70.0 "c" 50.0} {"a" 0 "b" 1} ))))
+       [[0 10.0] [1 70.0] ])))

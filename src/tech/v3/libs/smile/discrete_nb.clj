@@ -2,23 +2,21 @@
   (:require [tech.v3.dataset :as ds]
             [tech.v3.dataset.modelling :as ds-mod]
             [tech.v3.libs.smile.nlp :as nlp]
+            [tech.v3.datatype.errors :as errors]
             [tech.v3.ml :as ml])
   (:import [smile.classification DiscreteNaiveBayes DiscreteNaiveBayes$Model]
            smile.util.SparseArray))
 
-(defn freqs->SparseArray [freq-map vocab->index-map]
-  (let [sparse-array (SparseArray.)]
-    (run!
-     (fn [[token freq]]
-       (when (contains? vocab->index-map token)
-         (.append sparse-array ^int (get vocab->index-map token) ^double freq)))
-     freq-map)
-    sparse-array))
+
 
 (defn bow->SparseArray [ds bow-col indices-col create-vocab-fn]
   "Converts a bag-of-word column `bow-col` to sparse indices column `indices-col`,
    as needed by the discrete naive bayes model. `vocab size` is the size of vocabluary used, sorted by token frequency "
-  (nlp/bow->something-sparse ds bow-col indices-col create-vocab-fn freqs->SparseArray))
+  (nlp/bow->something-sparse ds bow-col indices-col create-vocab-fn nlp/freqs->SparseArray))
+
+
+
+
 
 
 (defn train [feature-ds target-ds options]
@@ -29,7 +27,8 @@
                                 (get feature-ds (:sparse-column options)))
         train-score-array (into-array Integer/TYPE
                                       (get target-ds (first (ds-mod/inference-target-column-names target-ds))))
-        p (count (-> feature-ds meta :count-vectorize-vocabulary :vocab->index-map))
+        p (:p options)
+        _ (errors/when-not-error (pos? p) "p needs to be specified in options and greater 0")
         nb-model
         (case (options :discrete-naive-bayes-model)
           :polyaurn DiscreteNaiveBayes$Model/POLYAURN

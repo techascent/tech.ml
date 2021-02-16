@@ -1,7 +1,7 @@
 (ns tech.v3.libs.smile.sparse-logreg
   (:require
    [tech.v3.datatype :as dt]
-   [clojure.test :refer :all]
+   [tech.v3.ml :as ml]
    [tech.v3.dataset :as ds]
    [tech.v3.dataset.modelling :as ds-mod]
    [tech.v3.libs.smile.discrete-nb :as nb]
