@@ -3,13 +3,16 @@
   (:require [tech.v3.datatype :as dtype]
             [tech.v3.datatype.protocols :as dtype-proto]
             [tech.v3.dataset :as ds]
+            [tech.v3.dataset.modelling :as ds-mod]
             [tech.v3.dataset.utils :as ds-utils]
             [tech.v3.tensor :as dtt]
             [tech.v3.ml.gridsearch :as ml-gs]
             [tech.v3.ml.model :as model]
             [tech.v3.ml :as ml]
             [tech.v3.libs.smile.protocols :as smile-proto]
-            [tech.v3.libs.smile.data :as smile-data])
+            [tech.v3.libs.smile.data :as smile-data]
+            [tech.v3.datatype.errors :as errors]
+            )
   (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree RandomForest KNN]
            [smile.base.cart SplitRule]
            [smile.data.formula Formula]
@@ -333,6 +336,13 @@
   [feature-ds label-ds options]
   (let [entry-metadata (model-type->classification-model
                         (model/options->model-type options))
+
+        _ (errors/when-not-error
+           (ds-mod/inference-target-label-map label-ds)
+           "In classification, the target column needs to be categorical and having been transformed to numeric.
+See tech.v3.dataset/categorical->number.
+"
+           )
         target-colname (first (ds/column-names label-ds))
         feature-colnames (ds/column-names feature-ds)
         formula (smile-proto/make-formula (ds-utils/column-safe-name target-colname)
