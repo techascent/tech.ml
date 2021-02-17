@@ -3,7 +3,9 @@
             [tech.v3.dataset :as ds]
             [tech.v3.dataset.modelling :as ds-mod]
             [tech.v3.libs.smile.nlp :as nlp]
-            [tech.v3.ml :as ml])
+            [tech.v3.ml :as ml]
+            [tech.v3.datatype.errors :as errors]
+            )
   (:import smile.classification.Maxent))
 
 (def maxent-default-parameters
@@ -13,26 +15,15 @@
    :max-iter 500
    })
 
-(defn bow->sparse-indices [bow vocab->index-map]
-  "Converts the token-frequencies to the sparse vectors
-   needed by Maxent"
-  (->>
-   (merge-with
-    (fn [index count]
-      [index count])
-    vocab->index-map
-    bow)
-   vals
-   (filter vector?)
-   (map first)
-   (into-array Integer/TYPE)))
+
 
 
 (defn bow->sparse-array [ds bow-col indices-col create-vocab-fn]
   "Converts a bag-of-word column `bow-col` to sparse indices column `indices-col`,
    as needed by the Maxent model.
    `vocab size` is the size of vocabluary used, sorted by token frequency "
-  (nlp/bow->something-sparse ds bow-col indices-col create-vocab-fn bow->sparse-indices))
+  (nlp/bow->something-sparse ds bow-col indices-col create-vocab-fn nlp/bow->sparse-indices))
+
 
 
 (defn maxent-train [feature-ds target-ds options maxent-type]
@@ -43,7 +34,8 @@
                                 (get feature-ds (:sparse-column options)))
         train-score-array (into-array Integer/TYPE
                                       (get target-ds (first (ds-mod/inference-target-column-names target-ds))))
-        p (count (-> feature-ds meta :count-vectorize-vocabulary :vocab->index-map))
+        p (:p options)
+        _ (errors/when-not-error (pos? p) "p needs to be specified in options and greater 0")
         options (merge maxent-default-parameters options)]
     (case maxent-type
       :multinomial

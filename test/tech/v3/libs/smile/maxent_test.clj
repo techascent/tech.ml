@@ -18,7 +18,8 @@
 (deftest test-maxent-multinomial []
   (let [reviews (get-reviews)
         trained-model (ml/train reviews {:model-type :maxent-multinomial
-                                         :sparse-column :bow-sparse})]
+                                         :sparse-column :bow-sparse
+                                         :p 1000})]
 
     (is (= 1 (get (first (:bow reviews)) "sweet")  ))
     (is (= [120 243 453] (take 3 (-> reviews
@@ -40,7 +41,8 @@
 
                            ))
         trained-model (ml/train reviews {:model-type :maxent-binomial
-                                         :sparse-column :bow-sparse})]
+                                         :sparse-column :bow-sparse
+                                         :p 1000})]
     trained-model
      (is (= 1001 (-> trained-model
                      :model-data

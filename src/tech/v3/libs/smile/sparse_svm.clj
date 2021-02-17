@@ -1,7 +1,7 @@
 (ns tech.v3.libs.smile.sparse-svm
   (:require
    [tech.v3.datatype :as dt]
-   [clojure.test :refer :all]
+   [tech.v3.datatype.errors :as errors]
    [tech.v3.dataset :as ds]
    [tech.v3.dataset.modelling :as ds-mod]
    [tech.v3.libs.smile.discrete-nb :as nb]
@@ -20,7 +20,8 @@
    over the vocabulary."
   (let [train-array (into-array SparseArray (get feature-ds (options :sparse-column)))
         score (get target-ds (first (ds-mod/inference-target-column-names target-ds)))
-        p (count (-> feature-ds meta :count-vectorize-vocabulary :vocab->index-map))
+        p (:p options)
+        _ (errors/when-not-error (pos? p) "p needs to be specified in options and greater 0")
         ]
     (SVM/fit train-array
              (dt/->int-array score)
