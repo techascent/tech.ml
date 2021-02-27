@@ -75,7 +75,7 @@
   "Predict function for Maxent"
   (let [predict-array
         (into-array ^"[[Ljava.lang.Integer"
-                    (get feature-ds :bow-sparse))
+                    (get feature-ds (get-in model [:options :sparse-column]) ))
         target-colum (first (:target-columns model))]
     (ds/->dataset {
                    target-colum
