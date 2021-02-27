@@ -23,9 +23,7 @@
 
         prediction (ml/predict (get-reviews) trained-model)
         ]
-    (def prediction prediction)
-
-    (is (= 1000 (prediction :Score)))
+    (is (= 1000 (count  (prediction :Score))))
     (is (= 1 (get (first (:bow reviews)) "sweet")  ))
     (is (= [120 243 453] (take 3 (-> reviews
                                      :sparse
@@ -46,7 +44,7 @@
 
                            ))
         trained-model (ml/train reviews {:model-type :maxent-binomial
-                                         :sparse-column :bow-sparse
+                                         :sparse-column :sparse
                                          :p 1000})]
     trained-model
      (is (= 1001 (-> trained-model
