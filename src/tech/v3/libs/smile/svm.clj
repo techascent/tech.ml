@@ -25,8 +25,8 @@
 
     (SVM/fit train-data
              (into-array Integer/TYPE (seq  (get target-ds (first (ds-mod/inference-target-column-names target-ds)))))
-             ^double (get options :smile.svm.C 1.0)
-             ^double (get options :smile.svm.tol 1e-4)
+             ^double (get options :C 1.0)
+             ^double (get options :tol 1e-4)
              )))
 
 (defn predict [feature-ds

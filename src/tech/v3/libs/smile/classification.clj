@@ -13,7 +13,8 @@
             [tech.v3.libs.smile.data :as smile-data]
             [tech.v3.datatype.errors :as errors]
             )
-  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree RandomForest KNN]
+  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression
+            DecisionTree RandomForest KNN GradientTreeBoost]
            [smile.base.cart SplitRule]
            [smile.data.formula Formula]
            [smile.data DataFrame]
@@ -139,35 +140,35 @@
    ;;                 {:name :tolerance
    ;;                  :type :float64
    ;;                  :default 1e-4}]}
-   ;; :gradient-tree-boost {:attributes #{:probabilities}
-   ;;                       :class-name "GradientTreeBoost"
-   ;;                       :datatypes #{:float64-array}
-   ;;                       :name :gradient-tree-boost
-   ;;                       :options [{:name :ntrees
-   ;;                                  :type :int32
-   ;;                                  :default 500}
-   ;;                                 {:name :max-nodes
-   ;;                                  :type :int32
-   ;;                                  :default 6
-   ;;                                  :range :>0}
-   ;;                                 {:name :shrinkage
-   ;;                                  :type :float64
-   ;;                                  :default 0.005
-   ;;                                  :range :>0}
-   ;;                                 {:name :sampling-fraction
-   ;;                                  :type :float64
-   ;;                                  :default 0.7
-   ;;                                  :range [0.0 1.0]}]}
-    :knn {
-          :name :knn
-          :options [{:name :k
-                     :type :int32
-                     :default 5}
+   :gradient-tree-boost
+   {:class-name "GradientTreeBoost"
+    :name :gradient-tree-boost
+    :options [{:name :ntrees
+               :type :int32
+               :default 500}
+              {:name :max-nodes
+               :type :int32
+               :default 6}
+              {:name :shrinkage
+               :type :float64
+               :default 0.005}
+              {:name :sampling-fraction
+               :type :float64
+               :default 0.7}]
+    :constructor #(GradientTreeBoost/fit ^Formula %1 ^DataFrame %2  ^Properties %3 )
+    :predictor tuple-predict-posterior
+    }
+   :knn {
+
+         :name :knn
+         :options [{:name :k
+                    :type :int32
+                    :default 5}
                    ]
-          :constructor #(construct-knn ^Formula %1 ^DataFrame %2  ^Properties %3)
-          :predictor double-array-predict-posterior
-          :property-name-stem "smile.knn"
-          :gridsearch-options {:k (ml-gs/categorical [2 100])}}
+         :constructor #(construct-knn ^Formula %1 ^DataFrame %2  ^Properties %3)
+         :predictor double-array-predict-posterior
+         :property-name-stem "smile.knn"
+         :gridsearch-options {:k (ml-gs/categorical [2 100])}}
 
    ;; :naive-bayes {:attributes #{:online :probabilities}
    ;;               :class-name "NaiveBayes"
@@ -252,24 +253,24 @@
    ;;                       :alpha (ml-gs/linear [0.0 1.0])}}
 
 
-    :random-forest {:name :random-forest
-                    :constructor #(RandomForest/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
-                    :predictor tuple-predict-posterior
-                    :options [{:name :trees :type :int32 :default 500}
-                              {:name :mtry :type :int32 :default 0}
-                              {:name :split-rule
-                               :type :string
-                               :lookup-table split-rule-lookup-table
-                               :default :gini}
-                              {:name :max-depth :type :int32 :default 20}
-                              {:name :max-nodes :type :int32 :default (fn [dataset props] (unchecked-int (max 5 (/ (ds/row-count dataset) 5))))
+   :random-forest {:name :random-forest
+                   :constructor #(RandomForest/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
+                   :predictor tuple-predict-posterior
+                   :options [{:name :trees :type :int32 :default 500}
+                             {:name :mtry :type :int32 :default 0}
+                             {:name :split-rule
+                              :type :string
+                              :lookup-table split-rule-lookup-table
+                              :default :gini}
+                             {:name :max-depth :type :int32 :default 20}
+                             {:name :max-nodes :type :int32 :default (fn [dataset props] (unchecked-int (max 5 (/ (ds/row-count dataset) 5))))
 
-                               }
-                              {:name :node-size :type :int32 :default 5}
-                              {:name :sample-rate :type :float32 :default 1.0}
-                              {:name :class-weight :type :string :default nil}
-                              ]
-                    :property-name-stem "smile.random.forest"}
+                              }
+                             {:name :node-size :type :int32 :default 5}
+                             {:name :sample-rate :type :float32 :default 1.0}
+                             {:name :class-weight :type :string :default nil}
+                             ]
+                   :property-name-stem "smile.random.forest"}
    ;; :rbf-network {:attributes #{}
    ;;               :class-name "RBFNetwork"
    ;;               :datatypes #{}
@@ -362,5 +363,7 @@ See tech.v3.dataset/categorical->number.
     (def split-data (ds-mod/train-test-split ds))
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
-    (def model (ml/train train-ds {:model-type :smile.classification/knn}))
-    (def prediction (ml/predict test-ds model))))
+    (def model (ml/train train-ds {:model-type :smile.classification/gradient-tree-boost}))
+    (def prediction (ml/predict test-ds model)))
+
+  )

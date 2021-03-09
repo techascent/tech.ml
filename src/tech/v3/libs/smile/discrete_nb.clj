@@ -27,7 +27,7 @@
                                 (get feature-ds (:sparse-column options)))
         train-score-array (into-array Integer/TYPE
                                       (get target-ds (first (ds-mod/inference-target-column-names target-ds))))
-        p (:p options)
+        p (int (:p options))
         _ (errors/when-not-error (pos? p) "p needs to be specified in options and greater 0")
         nb-model
         (case (options :discrete-naive-bayes-model)
@@ -37,15 +37,15 @@
           :twcnb DiscreteNaiveBayes$Model/TWCNB
           :bernoulli  DiscreteNaiveBayes$Model/BERNOULLI
           :multinomial DiscreteNaiveBayes$Model/MULTINOMIAL)
-        nb (DiscreteNaiveBayes. nb-model (:k options) p)]
+        nb (DiscreteNaiveBayes. nb-model (int (:k options)) (int  p))]
     (.update nb
              train-array
              train-score-array)
     nb))
 
 (defn predict [feature-ds
-                      thawed-model
-                      model]
+               thawed-model
+               model]
   "Predict function for discrete naive bayes"
   (let [sparse-arrays (get feature-ds  (get-in model [:options :sparse-column]))
         target-colum (first (:target-columns model))
