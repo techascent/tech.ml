@@ -5,11 +5,10 @@
             [tech.v3.dataset :as ds]
             [tech.v3.ml.loss :as loss]
             [tech.v3.ml :as ml]
-
             [clojure.test :refer [deftest is] :as t])
+  (:import [smile.math MathEx]))
 
-  (:import [smile.math MathEx])
-  )
+
 
 (def new-names
   ["mean radius"  "mean texture"
@@ -29,6 +28,7 @@
    "worst symmetry"  "worst fractal dimension"
    "target"
    ])
+
 (def test-svn
   (let [src-ds (ds/->dataset "test/data/breast_cancer.csv.gz", {:header-row? false :n-initial-skip-rows 1 })
         ds (->  src-ds
@@ -51,6 +51,4 @@
                              :randomize-dataset? false}
                          loss/classification-loss))]
 
-    (is (= loss  0.13450292397660824 ))
-    )
- )
+    (is (= loss  0.13450292397660824 ))))
