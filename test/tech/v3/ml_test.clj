@@ -11,14 +11,20 @@
   (:import [smile.classification KNN])
   )
 
+(defn absolute-difference ^double [^double x ^double y]
+  (Math/abs (double (- x y))))
+
+(defn close? [tolerance x y]
+  (< (absolute-difference x y) tolerance))
+
 (defn preprocess [ds options]
-    {:dataset
-     (-> ds
-         (nlp/count-vectorize :Text :bow nlp/default-text->bow options)
-         (nb/bow->SparseArray :bow :bow-sparse #(nlp/->vocabulary-top-n %  (:vocab-size options)))
-         )
-     :options (merge  options {:a 1
-                               :p (:vocab-size options)})})
+  {:dataset
+   (-> ds
+       (nlp/count-vectorize :Text :bow nlp/default-text->bow options)
+       (nb/bow->SparseArray :bow :bow-sparse #(nlp/->vocabulary-top-n %  (:vocab-size options)))
+       )
+   :options (merge  options {:a 1
+                             :p (int (:vocab-size options))})})
 
 (defn get-dataset []
   (->
@@ -41,6 +47,7 @@
                                            :vocab-size (ml-gs/linear 100 10000)}
                                   {:n-gridsearch 5}
                                   )]
+    (is  (close? 0.01 (-> models first :avg-loss) 0.86))
     (is (>
          (get-in (first models) [:options :vocab-size]))
         100)))
