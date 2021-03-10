@@ -13,7 +13,8 @@
             [tech.v3.libs.smile.data :as smile-data]
             [tech.v3.datatype.errors :as errors]
             )
-  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression DecisionTree RandomForest KNN]
+  (:import [smile.classification SoftClassifier AdaBoost LogisticRegression
+            DecisionTree RandomForest KNN GradientTreeBoost]
            [smile.base.cart SplitRule]
            [smile.data.formula Formula]
            [smile.data DataFrame]
@@ -139,41 +140,35 @@
    ;;                 {:name :tolerance
    ;;                  :type :float64
    ;;                  :default 1e-4}]}
-   ;; :gradient-tree-boost {:attributes #{:probabilities}
-   ;;                       :class-name "GradientTreeBoost"
-   ;;                       :datatypes #{:float64-array}
-   ;;                       :name :gradient-tree-boost
-   ;;                       :options [{:name :ntrees
-   ;;                                  :type :int32
-   ;;                                  :default 500}
-   ;;                                 {:name :max-nodes
-   ;;                                  :type :int32
-   ;;                                  :default 6
-   ;;                                  :range :>0}
-   ;;                                 {:name :shrinkage
-   ;;                                  :type :float64
-   ;;                                  :default 0.005
-   ;;                                  :range :>0}
-   ;;                                 {:name :sampling-fraction
-   ;;                                  :type :float64
-   ;;                                  :default 0.7
-   ;;                                  :range [0.0 1.0]}]}
-    :knn {
-          :name :knn
-          :options [{:name :k
-                     :type :int32
-                     :default 5}
+   :gradient-tree-boost
+   {:class-name "GradientTreeBoost"
+    :name :gradient-tree-boost
+    :options [{:name :ntrees
+               :type :int32
+               :default 500}
+              {:name :max-nodes
+               :type :int32
+               :default 6}
+              {:name :shrinkage
+               :type :float64
+               :default 0.005}
+              {:name :sampling-fraction
+               :type :float64
+               :default 0.7}]
+    :constructor #(GradientTreeBoost/fit ^Formula %1 ^DataFrame %2  ^Properties %3 )
+    :predictor tuple-predict-posterior
+    }
+   :knn {
+
+         :name :knn
+         :options [{:name :k
+                    :type :int32
+                    :default 5}
                    ]
-          :constructor #(construct-knn ^Formula %1 ^DataFrame %2  ^Properties %3)
-          :predictor double-array-predict-posterior
-          :property-name-stem "smile.knn"
-          :gridsearch-options {:k (ml-gs/categorical [2 100])}}
-   ;;
-   ;; ;;Not supported at this time because constructor patter is unique
-   ;; :maxent {:attributes #{:probabilities}
-   ;;          :class-name "Maxent"
-   ;;          :datatypes #{:float64-array :int32-array}
-   ;;          :name :maxent}
+         :constructor #(construct-knn ^Formula %1 ^DataFrame %2  ^Properties %3)
+         :predictor double-array-predict-posterior
+         :property-name-stem "smile.knn"
+         :gridsearch-options {:k (ml-gs/categorical [2 100])}}
 
    ;; :naive-bayes {:attributes #{:online :probabilities}
    ;;               :class-name "NaiveBayes"
@@ -258,64 +253,30 @@
    ;;                       :alpha (ml-gs/linear [0.0 1.0])}}
 
 
-    :random-forest {:name :random-forest
-                    :constructor #(RandomForest/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
-                    :predictor tuple-predict-posterior
-                    :options [{:name :trees :type :int32 :default 500}
-                              {:name :mtry :type :int32 :default 0}
-                              {:name :split-rule
-                               :type :string
-                               :lookup-table split-rule-lookup-table
-                               :default :gini}
-                              {:name :max-depth :type :int32 :default 20}
-                              {:name :max-nodes :type :int32 :default (fn [dataset props] (unchecked-int (max 5 (/ (ds/row-count dataset) 5))))
+   :random-forest {:name :random-forest
+                   :constructor #(RandomForest/fit ^Formula %1 ^DataFrame %2  ^Properties %3)
+                   :predictor tuple-predict-posterior
+                   :options [{:name :trees :type :int32 :default 500}
+                             {:name :mtry :type :int32 :default 0}
+                             {:name :split-rule
+                              :type :string
+                              :lookup-table split-rule-lookup-table
+                              :default :gini}
+                             {:name :max-depth :type :int32 :default 20}
+                             {:name :max-nodes :type :int32 :default (fn [dataset props] (unchecked-int (max 5 (/ (ds/row-count dataset) 5))))
 
-                               }
-                              {:name :node-size :type :int32 :default 5}
-                              {:name :sample-rate :type :float32 :default 1.0}
-                              {:name :class-weight :type :string :default nil}
-                              ]
-                    :property-name-stem "smile.random.forest"}
+                              }
+                             {:name :node-size :type :int32 :default 5}
+                             {:name :sample-rate :type :float32 :default 1.0}
+                             {:name :class-weight :type :string :default nil}
+                             ]
+                   :property-name-stem "smile.random.forest"}
    ;; :rbf-network {:attributes #{}
    ;;               :class-name "RBFNetwork"
    ;;               :datatypes #{}
    ;;               :name :rbf-network}
 
 
-   ;; :svm {:attributes #{:online :probabilities}
-   ;;       :class-name "SVM"
-   ;;       :datatypes #{:float64-array}
-   ;;       :name :svm
-   ;;       :constructor-filter (fn [options mixed-data-entry]
-   ;;                             ;;There is a different constructor when the number of classes is 2
-   ;;                             (if (> (utils/options->num-classes options)
-   ;;                                    2)
-   ;;                               mixed-data-entry
-   ;;                               (let [opt-name (-> (nth mixed-data-entry 2)
-   ;;                                                  :name)]
-   ;;                                 (when-not (or (= opt-name :multiclass-strategy)
-   ;;                                               (= opt-name :num-classes))
-   ;;                                     mixed-data-entry))))
-   ;;       :options [{:name :kernel
-   ;;                  :type :mercer-kernel
-   ;;                  :default {:kernel-type :gaussian}}
-   ;;                 {:name :soft-margin-penalty
-   ;;                  :type :float64
-   ;;                  :altname "C"
-   ;;                  :default 1.0}
-   ;;                 {:name :num-classes
-   ;;                  :type :int32
-   ;;                  :default utils/options->num-classes}
-   ;;                 {:name :multiclass-strategy
-   ;;                  :type :enumeration
-   ;;                  :class-type SVM$Multiclass
-   ;;                  :lookup-table {:one-vs-one SVM$Multiclass/ONE_VS_ONE
-   ;;                                 :one-vs-all SVM$Multiclass/ONE_VS_ALL}
-   ;;                  :default :one-vs-one}]
-   ;;       :gridsearch-options {:kernel {:kernel-type (ml-gs/nominative [:gaussian :linear])}
-   ;;                            :soft-margin-penalty (ml-gs/exp [1e-4 1e2])
-   ;;                            :multiclass-strategy (ml-gs/nominative [:one-vs-one
-   ;;                                                                    :one-vs-all])}}
    })
 
 
@@ -374,6 +335,7 @@ See tech.v3.dataset/categorical->number.
         n-labels (-> (get target-categorical-maps target-colname)
                      :lookup-table
                      count)
+        _ (errors/when-not-error (pos? n-labels) "n-labels equals 0. Something is wrong with the :lookup-table")
         predictor (:predictor entry-metadata)
         predictions (predictor thawed-model feature-ds options n-labels)]
     (-> predictions
@@ -401,5 +363,7 @@ See tech.v3.dataset/categorical->number.
     (def split-data (ds-mod/train-test-split ds))
     (def train-ds (:train-ds split-data))
     (def test-ds (:test-ds split-data))
-    (def model (ml/train train-ds {:model-type :smile.classification/knn}))
-    (def prediction (ml/predict test-ds model))))
+    (def model (ml/train train-ds {:model-type :smile.classification/gradient-tree-boost}))
+    (def prediction (ml/predict test-ds model)))
+
+  )
