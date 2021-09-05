@@ -75,7 +75,7 @@
                                               4 :c4
                                               5 :c5}]
                                  (dtype/emap val-map :keyword col))))
-           (ds/categorical->number cf/categorical)
+           (ds/categorical->number [:Score])
            (ds-mod/set-inference-target :Score))
           folds
           (ml/train-k-fold reviews {:model-type :xgboost/classification

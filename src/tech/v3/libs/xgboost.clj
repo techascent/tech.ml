@@ -124,7 +124,7 @@
   (DMatrix.
    (.iterator
     ^Iterable (map
-               (fn [features target ] (sparse->labeled-point features target n-sparse-columns))
+               (fn [features target] (sparse->labeled-point features target n-sparse-columns))
                (get feature-ds sparse-column)
                (or  (get target-ds (first (ds-mod/inference-target-column-names target-ds)))
                     (repeat 0.0)
