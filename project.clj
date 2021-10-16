@@ -7,7 +7,7 @@ of how to use this library."
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.10.2"]
-                 [techascent/tech.ml.dataset "6.019"]
+                 [techascent/tech.ml.dataset "6.022"]
                  [ml.dmlc/xgboost4j_2.12 "1.3.1"]
                  [ml.dmlc/xgboost4j-spark_2.12 "1.3.1"]
                  [org.bytedeco/openblas "0.3.10-1.5.4"]

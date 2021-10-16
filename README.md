@@ -1,5 +1,15 @@
 # tech.ml
 
+## This Library Has Been Superceded by scicloj.ml!
+
+
+This is great news!  The clojure community has come together and together built
+a more stable and wider ranging ml subsystem.  Please head over to 
+[scicloj.ml](https://github.com/scicloj/scicloj.ml) for the best and most 
+up-to-date machine learning toolkit available for Clojure.
+
+
+
 [![Clojars Project](https://img.shields.io/clojars/v/techascent/tech.ml.svg)](https://clojars.org/techascent/tech.ml)
 
 Basic machine learning library for use with `tech.v3.dataset`.
